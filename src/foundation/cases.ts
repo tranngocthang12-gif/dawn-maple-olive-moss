@@ -1,0 +1,372 @@
+export type CaseKind = "system" | "failure" | "pattern";
+
+export type CaseStudy = {
+  id: string;
+  kind: CaseKind;
+  title: string;
+  when: string;
+  worked: string[];
+  failed: string[];
+  why: string[];
+  transfer: string[];
+  notCopy: string[];
+  evidence: string;
+};
+
+export const cases: CaseStudy[] = [
+  {
+    id: "c1",
+    kind: "system",
+    title: "Renaissance Technologies — Medallion",
+    when: "từ cuối thập niên 1980, hồ sơ công khai vẫn mỏng",
+    worked: [
+      "Hạ tầng dữ liệu, kiểm định và thực thi được đầu tư như sản phẩm chính, không như một báo cáo cuối tuần.",
+      "Chiến lược ngắn hạn, sức chứa có hạn, đóng cửa vốn ngoài. Phí và cấu trúc khiến kết quả không phải là lợi nhuận của một nhà đầu tư bên ngoài.",
+    ],
+    failed: [
+      "Các quỹ mở hơn của cùng tổ chức không phải Medallion. Gộp chúng thành một huyền thoại là sai đơn vị.",
+    ],
+    why: [
+      "Lợi thế nếu có thì nằm ở dữ liệu, tốc độ kiểm giả thuyết, thực thi và việc không mở rộng quá sức chứa. Không nằm ở một luận điểm doanh nghiệp viết hay.",
+    ],
+    transfer: [
+      "Nghiên cứu phải cho tín hiệu chết. Năng lực vận hành là một phần của lợi thế, không phải phần phụ.",
+    ],
+    notCopy: [
+      "Đừng tưởng một memo AI là họ hàng của thống kê tần suất cao. Đừng nhập suất sinh lời báo chí vào hệ thống khi chưa có nguồn sơ cấp.",
+    ],
+    evidence: "Phần lớn chi tiết là báo chí và sách của Zuckerman, tầng kể. Không có số lợi nhuận nào được lưu ở đây.",
+  },
+  {
+    id: "c2",
+    kind: "system",
+    title: "D. E. Shaw và Two Sigma — đa chiến lược có kỹ thuật",
+    when: "từ thập niên 1980 và 2001",
+    worked: [
+      "Coi nghiên cứu, dữ liệu và phần mềm là nghề, không phải phòng hỗ trợ của một người kể chuyện.",
+      "Nhiều chiến lược thay vì một luận điểm vĩ mô duy nhất.",
+    ],
+    failed: [
+      "Đa chiến lược không miễn nhiễm với chỗ đông và với các giai đoạn tín hiệu chết. Chi tiết lỗ theo sách là thông tin riêng, không có ở Foundation.",
+    ],
+    why: [
+      "Cấu trúc tổ chức giảm phụ thuộc vào một thiên tài. Nó không xóa rủi ro mô hình.",
+    ],
+    transfer: [
+      "Đa dạng mô hình chỉ có ích nếu sai số không cùng hướng. Cùng một dữ liệu và cùng một văn hóa vẫn có thể thành độc canh.",
+    ],
+    notCopy: [
+      "Đừng bắt chước thương hiệu. Không có AUM hay lợi nhuận nào được ghi vì hệ thống chưa giữ báo cáo gốc.",
+    ],
+    evidence: "Suy luận từ hồ sơ công khai mức tổ chức. CHƯA ĐỦ BẰNG CHỨNG để nói chúng làm đúng những gì.",
+  },
+  {
+    id: "c3",
+    kind: "system",
+    title: "Man AHL — xu hướng có giai đoạn chảy máu",
+    when: "nhiều thập niên, hồ sơ xu hướng là công khai ở mức ngành",
+    worked: [
+      "Một quy tắc đơn giản, đo được, có thể sống qua những regime mà dự báo cơ bản bị kể chuyện.",
+      "Đôi khi đi ngược danh mục cổ phiếu dài trong các cú sốc. Đó là giả thuyết đa dạng hóa, không phải định luật.",
+    ],
+    failed: [
+      "Xu hướng chảy máu lâu trong thị trường không có xu hướng. Người bỏ cuộc đúng giai đoạn đó thường bỏ ngay trước khi quy tắc còn usefulness.",
+    ],
+    why: [
+      "Lợi thế nếu còn thì là hành vi chậm và chi phí cơ hội của người không chịu lỗ nhỏ kéo dài. Nó chết khi quá đông hoặc khi cấu trúc thị trường đổi độ trễ.",
+    ],
+    transfer: [
+      "Một chiến lược cần hộ chiếu regime và một kế hoạch chịu đau. Không cần một câu chuyện doanh nghiệp.",
+    ],
+    notCopy: [
+      "Đừng thêm tham số cho đến khi đường cong đẹp lại. Đó là overfitting đã được hiến chương cấm.",
+    ],
+    evidence: "Mô tả ngành, không phải số liệu kiểm toán của một quỹ. Không có lợi nhuận được nhập.",
+  },
+  {
+    id: "c4",
+    kind: "system",
+    title: "Đầu tư theo yếu tố đã công bố",
+    when: "từ Fama–French và các nghiên cứu công khai sau đó",
+    worked: [
+      "Giá trị, đà, chất lượng có lịch sử dài hơn một câu chuyện. Chúng buộc người kể chuyện phải đối diện với một cái gì đó đo được.",
+    ],
+    failed: [
+      "Sau khi công bố, yếu tố bị đông, bị định nghĩa lại cho đến khi có kết quả đẹp, và có những giai đoạn lỗ sâu. Giá trị cuối thập niên 2010 là ví dụ tranh luận công khai, không phải một sự bác bỏ duy nhất.",
+    ],
+    why: [
+      "Một phần là bù rủi ro, một phần là hành vi, một phần là khai thác dữ liệu. Ba phần đó không mặc cùng một bộ quần áo mãi.",
+    ],
+    transfer: [
+      "Yếu tố công khai là base rate và là đối trọng, chưa phải là lợi thế. Lợi thế phải nói được vì sao mình còn tiền sau chi phí trong khi cả ngành đã đọc cùng bài báo.",
+    ],
+    notCopy: [
+      "Đừng xếp mười yếu tố đã công bố rồi gọi là hệ thống riêng.",
+    ],
+    evidence: "Văn học học thuật tầng 3. Không gắn một mức lợi nhuận tương lai.",
+  },
+  {
+    id: "c5",
+    kind: "system",
+    title: "Tạo lập thị trường",
+    when: "liên tục; cửa sổ công khai là hồ sơ các công ty đại chúng trong ngành",
+    worked: [
+      "Lợi thế cấu trúc: hàng tồn, chênh lệch, hàng chờ, quản trị rủi ro kho. Không cần đoán báo cáo quý sau.",
+    ],
+    failed: [
+      "Khi hàng chờ biến mất hoặc tồn kho kẹt, chính sách phòng hộ trở thành hướng rủi ro. Tốc độ là cuộc chạy vũ trang, không phải một bí quyết viết ra một lần.",
+    ],
+    why: [
+      "Được trả để cung cấp thanh khoản, và bị phạt khi tưởng mình đang đầu tư.",
+    ],
+    transfer: [
+      "Hỏi lợi thế thuộc loại nào. Thực thi và cấu trúc không mua được bằng một bản luận điểm.",
+    ],
+    notCopy: [
+      "Một cá nhân không thuê được lợi thế này bằng cách xem giá. Đừng giả lập nó trong một backtest không có hàng chờ.",
+    ],
+    evidence: "Cơ chế ngành. Không dùng số lợi nhuận của một hãng cụ thể.",
+  },
+  {
+    id: "c6",
+    kind: "system",
+    title: "Numerai — mô hình đám đông trên dữ liệu đã mã hóa",
+    when: "từ giữa thập niên 2010",
+    worked: [
+      "Thử tách dữ liệu khỏi người mô hình để giảm rò rỉ ý nghĩa và để nhiều mô hình cạnh tranh.",
+    ],
+    failed: [
+      "Cấu trúc stake và chất lượng đám đông đổi theo thời gian. Không có ở đây một kết luận rằng thí nghiệm đã thắng.",
+    ],
+    why: [
+      "Ý tưởng đáng giữ: nhiều mô hình chỉ có ích nếu phần thưởng phạt overfitting, không thưởng diễn giải hay.",
+    ],
+    transfer: [
+      "Tách người xây mô hình khỏi quyền tự kể chuyện. Đòi hỏi một hàm điểm viết trước.",
+    ],
+    notCopy: [
+      "Đừng coi mã hóa dữ liệu là đã hết rò rỉ. Đừng coi một thiết kế đẹp là kết quả.",
+    ],
+    evidence: "Suy luận từ thiết kế đã công bố. CHƯA ĐỦ BẰNG CHỨNG về hiệu quả đầu tư.",
+  },
+  {
+    id: "c7",
+    kind: "failure",
+    title: "LTCM, 1998",
+    when: "1994–1998",
+    worked: [
+      "Mô hình hội tụ, năng lực toán và uy tín gọi được vốn và đòn bẩy rất lớn khi còn đúng.",
+    ],
+    failed: [
+      "Tài trợ và thanh khoản biến mất cùng lúc tương quan tăng. Đúng về giá trị cuối không cứu được một bảng cân đối bị gọi nợ ở giữa đường.",
+    ],
+    why: [
+      "Quy mô so với thị trường, đòn bẩy, và giả định rằng quan hệ lịch sử còn khi người khác giữ cùng vị thế.",
+    ],
+    transfer: [
+      "Sống sót đứng trước việc đúng. Một kịch bản đuôi phải gồm việc mình không rút được.",
+    ],
+    notCopy: [
+      "Đừng kết luận rằng mô hình vô dụng. Cái gãy là kích thước, tài trợ và sự đông, không phải ý tưởng hội tụ nói chung.",
+    ],
+    evidence: "Hồ sơ công khai và sách Lowenstein, Bookstaber, Chincarini. Số lỗ chi tiết không được đưa vào tính toán của hệ thống.",
+  },
+  {
+    id: "c8",
+    kind: "failure",
+    title: "Khủng hoảng các quỹ định lượng, tháng 8/2007",
+    when: "tháng 8 năm 2007",
+    worked: [
+      "Nhiều sách thống kê đã có lợi thế nhỏ, đo được, trong một thời kỳ dài trước đó.",
+    ],
+    failed: [
+      "Khi một số sách phải giảm đòn bẩy, họ bán cái bán được. Các chiến lược tưởng như độc lập thành ra cùng một giao dịch.",
+    ],
+    why: [
+      "Đông và thanh khoản là tính chất của danh mục, không phải của từng tín hiệu nhìn riêng.",
+    ],
+    transfer: [
+      "Hỏi ai đang giữ cùng vị thế và họ tài trợ bằng gì. Độc lập trên tương quan mẫu không đủ.",
+    ],
+    notCopy: [
+      "Một tuần không chứng minh định lượng đã chết, cũng không chứng minh nó sẽ tự lành.",
+    ],
+    evidence: "Có bài của Khandani và Lo ở tầng học thuật. Đây là cơ chế, không phải bảng lỗ của một quỹ.",
+  },
+  {
+    id: "c9",
+    kind: "failure",
+    title: "Knight Capital, 1/8/2012",
+    when: "2012",
+    worked: [
+      "Doanh nghiệp tạo lập có thể kiếm tiền đều trong nhiều năm nhờ vận hành.",
+    ],
+    failed: [
+      "Một lỗi triển khai phần mềm khiến hệ thống gửi một lượng lệnh sai trong phiên. Tổn thất được công bố ở mức hàng trăm triệu đô la trước thuế. Hệ thống này chưa lưu PDF gốc nên không đóng đinh một con số vào mô hình.",
+    ],
+    why: [
+      "Kiểm soát phát hành, không phải một luận điểm đầu tư sai. Tốc độ không có cầu dao là đòn bẩy vận hành.",
+    ],
+    transfer: [
+      "Rủi ro thực thi và rủi ro mô hình là hai cửa chết khác nhau. Cả hai cần tiêu chí dừng.",
+    ],
+    notCopy: [
+      "Đừng rút ra rằng phần mềm nguy hiểm nên quay lại quyết định bằng cảm giác. Cảm giác không có nhật ký lỗi.",
+    ],
+    evidence: "Thông cáo của công ty và hồ sơ quản lý thời điểm đó, chưa được lưu bản gốc trong Foundation. Nhãn: dữ liệu chưa đối chiếu từng chữ.",
+  },
+  {
+    id: "c10",
+    kind: "failure",
+    title: "Overfitting của mô hình học máy trong tài chính",
+    when: "mẫu hình lặp, không một vụ duy nhất",
+    worked: [
+      "Mô hình phi tuyến tìm được quan hệ mà hồi quy tuyến tính bỏ sót, khi dữ liệu, nhãn và chi phí được thiết kế nghiêm.",
+    ],
+    failed: [
+      "Backtest đẹp do rò nhãn, do chọn tham số trên tập kiểm, do không tính chi phí, do không walk-forward. Kết quả giấy chết khi chạm thị trường.",
+    ],
+    why: [
+      "Số lần thử thì lớn, số lần độc lập thì nhỏ, phần thưởng cho đường cong đẹp thì cao.",
+    ],
+    transfer: [
+      "Viết cách chết trước khi luyện. Giữ một tập chưa đụng. Coi Sharpe chưa trừ số lần thử là chưa xong.",
+    ],
+    notCopy: [
+      "Đừng cấm công cụ. Cấm việc kể một đường cong là một chiến lược.",
+    ],
+    evidence: "Cảnh báo có trong López de Prado và văn học kiểm định nhiều giả thuyết. Không gắn tên một quỹ đổ vì một kiến trúc mạng cụ thể nếu chưa có hồ sơ.",
+  },
+  {
+    id: "c11",
+    kind: "pattern",
+    title: "Dữ liệu thay thế sau khi bị bán rộng",
+    when: "thập niên 2010 trở đi",
+    worked: [
+      "Một số tín hiệu vật lý có cơ chế thật: việc làm, giá, vận tải, tồn kho. Chúng có thể đến trước báo cáo.",
+    ],
+    failed: [
+      "Khi cùng một bộ dữ liệu được bán cho nhiều người, phần còn lại sau chi phí có thể không đủ. Tín hiệu vệ tinh bãi đỗ là ví dụ thường được kể về sự đông, không phải một vụ phá sản được kiểm toán ở đây.",
+    ],
+    why: [
+      "Lợi thế thông tin chết khi thông tin không còn ít người giữ, hoặc khi cơ chế bị hiểu nhầm từ đầu.",
+    ],
+    transfer: [
+      "Mục không đông trong điểm chất lượng tín hiệu là bắt buộc. Hợp đồng dữ liệu là một phần của lợi thế, không phải một file.",
+    ],
+    notCopy: [
+      "Đừng mua một bộ dữ liệu lạ rồi tìm câu chuyện sau. Cơ chế viết trước.",
+    ],
+    evidence: "Mẫu hình ngành. Không có một quỹ hư cấu nào được nêu tên. CHƯA ĐỦ BẰNG CHỨNG để lượng hóa mức suy giảm trung bình.",
+  },
+  {
+    id: "c12",
+    kind: "failure",
+    title: "Archegos, 2021",
+    when: "2021",
+    worked: [
+      "Đòn bẩy qua tổng hoàn swap cho phép một vị thế rất lớn mà không hiện thành sở hữu cổ phiếu thông thường trên một bảng cân đối dễ thấy.",
+    ],
+    failed: [
+      "Khi giá đi ngược, các bên cho vay đòi ký quỹ gần như cùng lúc. Tổn thất của các ngân hàng là nhiều tỷ đô la theo công bố riêng của họ. Không có một tổng duy nhất đã được hệ thống này đối chiếu.",
+    ],
+    why: [
+      "Đòn bẩy giấu, tập trung, và việc mỗi bên không thấy hết các bên kia.",
+    ],
+    transfer: [
+      "Nghĩa vụ ngoài bảng và tổng vị thế thực là việc của module pháp y, không phải chú thích.",
+    ],
+    notCopy: [
+      "Đừng chỉ đọc danh mục công bố. Hỏi công cụ nào không nằm trên bảng.",
+    ],
+    evidence: "Công bố của các ngân hàng liên quan và báo cáo điều tra công khai. Số tổng không được bịa cho tròn.",
+  },
+  {
+    id: "c13",
+    kind: "failure",
+    title: "Enron, 2001 — và Wirecard, 2020",
+    when: "2001 và 2020",
+    worked: [
+      "Câu chuyện tăng trưởng và, trong một thời gian, sự chấp nhận của kiểm toán, phân tích và báo chí chính thống.",
+    ],
+    failed: [
+      "Nghĩa vụ ngoài bảng, bên liên quan, dòng tiền không đi cùng lợi nhuận, và việc bằng chứng trái bị coi là bất lịch sự.",
+    ],
+    why: [
+      "Cấu trúc khuyến khích kể chuyện, và chi phí của người nêu nghi ngờ cao hơn chi phí của người gật đầu, cho đến khi không còn như vậy.",
+    ],
+    transfer: [
+      "Phe pháp y không cần được yêu. KPI biến mất, dòng tiền lệch lợi nhuận, và đổi kiểm toán là việc phải mở hồ sơ chứ không phải việc phải giải thích cho êm.",
+    ],
+    notCopy: [
+      "Một cờ đỏ không phải một bản án. Wirecard cũng là bài học về việc bằng chứng của người bán khống và báo chí có thể đúng trong khi cơ quan quản lý còn chậm. Không đảo thành việc tin mọi lời buộc tội.",
+    ],
+    evidence: "Hai vụ đã có hồ sơ tòa, phá sản và điều tra công khai. Foundation chưa lưu bản gốc từng trang. Dùng như cơ chế, không như bảng số.",
+  },
+  {
+    id: "c14",
+    kind: "failure",
+    title: "Amaranth, 2006 — và Barings, 1995",
+    when: "2006 và 1995",
+    worked: [
+      "Một vị thế tập trung có thể đúng rất lâu, đủ lâu để gọi thêm vốn và để kiểm soát nội bộ ngủ.",
+    ],
+    failed: [
+      "Amaranth: tập trung khí đốt tự nhiên, lỗ ở quy mô quỹ. Barings: giao dịch giấu, kiểm soát hai việc trên cùng một người. Cả hai là chết vì kiểm soát và tập trung, không phải vì thị trường bí ẩn.",
+    ],
+    why: [
+      "Một người hoặc một ý tưởng không bị chất vấn, nhân với đòn bẩy.",
+    ],
+    transfer: [
+      "Trần vị thế và tách người được phép đặt lệnh khỏi người được phép ghi sổ. Tiêu chí hủy phải do người khác cũng đọc được.",
+    ],
+    notCopy: [
+      "Đừng kể hai vụ này như bằng chứng rằng hàng hóa hoặc phái sinh không dùng được. Chúng là bằng chứng về giới hạn.",
+    ],
+    evidence: "Hồ sơ công khai rộng. Con số lỗ không được đưa vào máy tính của Foundation cho đến khi có bản gốc trong dòng dõi.",
+  },
+  {
+    id: "c15",
+    kind: "pattern",
+    title: "Thanh khoản biến mất: 2008 và tháng 3/2020",
+    when: "2008–2009 và tháng 3/2020",
+    worked: [
+      "Trước cú sốc, nhiều tài sản trông như không liên quan và như bán được.",
+    ],
+    failed: [
+      "Khi cần tiền, tương quan tăng và cái bán được bị bán trước. Năm 2020, cả thị trường được coi là an toàn cũng nghẽn tài trợ trong một khoảng ngắn, theo tường thuật của ngân hàng trung ương.",
+    ],
+    why: [
+      "Ràng buộc tài trợ chung và việc mọi người dùng cùng một định nghĩa về tài sản an toàn.",
+    ],
+    transfer: [
+      "Stress test phải có một kịch bản trong đó mình không phải người được phép bán từ từ.",
+    ],
+    notCopy: [
+      "Đừng hiệu chỉnh cả hệ thống trên một tháng. Cũng đừng giả định ngân hàng trung ương sẽ luôn kịp với vị thế của mình.",
+    ],
+    evidence: "Tường thuật chính sách công khai, tầng 1 về cơ chế ở mức hệ thống. Không có một mức sụt giảm danh mục nào được gán cho CHỈNAM.",
+  },
+  {
+    id: "c16",
+    kind: "pattern",
+    title: "Chứng khoán Việt Nam, khoảng 2007–2012 — hồ sơ chưa gắn",
+    when: "khoảng 2007–2012",
+    worked: [
+      "CHƯA ĐỦ BẰNG CHỨNG trong hệ thống này để kể cái gì đã hoạt động. Không điền bằng trí nhớ.",
+    ],
+    failed: [
+      "Một chu kỳ tín dụng, đòn bẩy nhà đầu tư cá nhân và sở hữu tập trung có thể làm gãy các base rate nhập từ sách Mỹ. Đây là giả thuyết nghiên cứu, chưa phải kết luận.",
+    ],
+    why: [
+      "Vì hồ sơ sơ cấp của HOSE, SSC và báo cáo doanh nghiệp chưa được gắn vào dòng dõi.",
+    ],
+    transfer: [
+      "Prior ngoại phải mang nhãn ngoại. Một án lệ nội địa chưa có số vẫn hữu ích nếu nó chặn việc bịa số.",
+    ],
+    notCopy: [
+      "Đừng điền đỉnh chỉ số, mức giảm hay tên ngân hàng vào đây cho đến khi có tài liệu tầng 1 và ngày biết.",
+    ],
+    evidence: "Cố ý để trống phần sự thật. Việc để trống là một tính năng của Foundation, không phải một thiếu sót tạm thời của người viết.",
+  },
+];

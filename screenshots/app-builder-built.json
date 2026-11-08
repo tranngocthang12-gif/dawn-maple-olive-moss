@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "CHỈNAM — Hiến chương",
+      "hasCanvas": false,
+      "bodyTextLen": 2729,
+      "bodyTextHash": "8789627954ff7a97bd759a7c47e1f121b29cdf18c099d7681e73009198ef3427",
+      "bodyTextPrefix": "CHỈNAM Hệ điều hành tình báo tài chính Foundation V1 · chưa hiệu",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "CHỈNAM — Hiến chương",
+      "hasCanvas": false,
+      "bodyTextLen": 2689,
+      "bodyTextHash": "7a5a7b944a0802a5c208e15268a490fc9ab445e8425a6425dc036ec27dc38262",
+      "bodyTextPrefix": "CHỈNAM Hệ điều hành tình báo tài chính Foundation V1 Hiến chương",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

@@ -391,22 +391,25 @@ export const useDesk = create<DeskState>()(
         const thesis = input.thesisId ? get().theses.find((t) => t.id === input.thesisId) ?? null : null;
         if (input.action === "paper" || input.action === "hold" || input.action === "kill") {
           if (!thesis) return { ok: false, reason: "Hành động này cần một thesis." };
-          if (thesis.status === "invalidated") return { ok: false, reason: "Thesis đã hủy là chỉ đọc và không được dùng để ghi quyết định mới." };
-          const blockers = thesisBlockers(thesis, {
-            mandate: get().mandate,
-            world: get().world,
-            baseRates: get().baseRates,
-            companies: get().companies,
-            decisions: get().decisions,
-          });
-          if (blockers.length > 0 && !input.override) {
-            return { ok: false, reason: `Thesis chưa sẵn sàng: ${blockers[0]}` };
+          if (input.action === "hold" && insufficientTextCount(thesis) > 0) {
+            return { ok: false, reason: "Thesis có dấu CHƯA ĐỦ không được ghi hành động giữ, kể cả khi ghi đè." };
           }
-          if (input.override && input.overrideReason.trim().length < 12) {
-            return { ok: false, reason: "Ghi đè cần lý do cụ thể. Không ghi đè im lặng." };
-          }
-          if (blockers.length === 0 && insufficientTextCount(thesis) > 0 && input.action === "hold") {
-            return { ok: false, reason: "Thesis sẵn sàng mỏng không được ghi hành động giữ." };
+          if (thesis.status === "invalidated") {
+            if (input.action !== "kill") return { ok: false, reason: "Thesis đã hủy không được ghi paper hoặc hold." };
+          } else {
+            const blockers = thesisBlockers(thesis, {
+              mandate: get().mandate,
+              world: get().world,
+              baseRates: get().baseRates,
+              companies: get().companies,
+              decisions: get().decisions,
+            });
+            if (blockers.length > 0 && !input.override) {
+              return { ok: false, reason: `Thesis chưa sẵn sàng: ${blockers[0]}` };
+            }
+            if (input.override && input.overrideReason.trim().length < 12) {
+              return { ok: false, reason: "Ghi đè cần lý do cụ thể. Không ghi đè im lặng." };
+            }
           }
         }
         if (get().decisions.length >= caps.decisions) return { ok: false, reason: fullBook };

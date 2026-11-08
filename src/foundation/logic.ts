@@ -86,21 +86,12 @@ const FORBIDDEN_INSUFFICIENT_KEYS = new Set<keyof ThesisTexts>([
   "valuation",
 ]);
 
-function normalizedText(value: string): string {
-  return value.trim().toLocaleUpperCase("vi-VN");
-}
-
-export function containsInsufficient(value: string): boolean {
-  return normalizedText(value).includes("CHƯA ĐỦ");
-}
-
-function isInsufficientSentence(value: string): boolean {
-  const clean = normalizedText(value).replace(/[.!?]+$/u, "").trim();
-  return clean === "CHƯA ĐỦ" || clean === "CHƯA ĐỦ BẰNG CHỨNG";
+export function hasInsufficientMarker(value: string): boolean {
+  return value.normalize("NFC").includes("CHƯA ĐỦ");
 }
 
 export function insufficientTextCount(t: Thesis): number {
-  return TEXT_KEYS.filter((field) => field.key !== "missing" && containsInsufficient(t.texts?.[field.key] ?? "")).length;
+  return TEXT_KEYS.filter((field) => field.key !== "missing" && hasInsufficientMarker(t.texts?.[field.key] ?? "")).length;
 }
 
 export function independentSourceCount(t: Thesis): number {
@@ -239,7 +230,7 @@ export function companyFileIssues(c: CompanyFile): string[] {
   if (c.standardNote.trim().length < 12) b.push("Cần ghi chuẩn đang dùng và cái nó không so sánh được.");
   if (c.business.trim().length < 12) b.push("Chưa mô tả doanh nghiệp bán gì, cho ai.");
   const usable = c.facts.filter((f) => recordUsable(f) && f.text.trim().length >= 2);
-  const thin = c.missingNote.includes("CHƯA ĐỦ") && c.missingNote.trim().length >= 12;
+  const thin = hasInsufficientMarker(c.missingNote) && c.missingNote.trim().length >= 12;
   if (usable.length === 0 && !thin) b.push("Chưa có sự kiện nguồn tầng 1 hoặc 2. Nếu chưa có, ghi CHƯA ĐỦ BẰNG CHỨNG.");
   const open = qualityItems.filter((q) => (c.quality?.[q.id]?.state ?? "open") === "open");
   if (open.length > 0 && !thin) b.push("Còn chiều chất lượng để ngỏ. Trả lời từng chiều, hoặc ghi CHƯA ĐỦ BẰNG CHỨNG.");
@@ -286,10 +277,10 @@ export function priorDecisions(security: string, decisions: Decision[]): Decisio
 export function baseRateSatisfied(t: Thesis, ctx: DeskCtx): boolean {
   const linked = ctx.baseRates.find((r) => r.id === (t.baseRateId ?? ""));
   if (linked && recordUsable(linked)) return true;
-  const note = (t.baseRateSearchNote ?? "").trim();
+  const note = (t.baseRateSearchNote ?? "").normalize("NFC").trim();
   return note.length >= 30
     && /đã\s+(?:tìm|tra\s*cứu|kiểm\s*tra)/iu.test(note)
-    && /chưa\s+(?:thấy|tìm\s*thấy)/iu.test(note);
+    && /(?:chưa|không)\s+(?:tìm\s+)?thấy/iu.test(note);
 }
 
 export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
@@ -305,7 +296,7 @@ export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
   for (const field of TEXT_KEYS) {
     const value = t.texts?.[field.key] ?? "";
     if (!filled(value)) b.push(`Còn trống: ${field.label}. Có thể ghi CHƯA ĐỦ BẰNG CHỨNG.`);
-    if (FORBIDDEN_INSUFFICIENT_KEYS.has(field.key) && containsInsufficient(value)) {
+    if (FORBIDDEN_INSUFFICIENT_KEYS.has(field.key) && hasInsufficientMarker(value)) {
       b.push(`${field.label} không được dùng CHƯA ĐỦ BẰNG CHỨNG để qua cổng.`);
     }
   }
@@ -313,9 +304,9 @@ export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
   if (insufficient > 8) b.push(`Có ${insufficient} mục CHƯA ĐỦ BẰNG CHỨNG; tối đa 8 mục, không tính Thông tin còn thiếu.`);
 
   const worldIds = t.worldIds ?? [];
-  if (!containsInsufficient(t.texts.macro) && worldIds.length === 0) b.push("Phơi nhiễm vĩ mô cần một quan sát Thế giới dùng được, hoặc ghi CHƯA ĐỦ BẰNG CHỨNG.");
+  if (!hasInsufficientMarker(t.texts.macro) && worldIds.length === 0) b.push("Phơi nhiễm vĩ mô cần một quan sát Thế giới dùng được, hoặc ghi CHƯA ĐỦ BẰNG CHỨNG.");
   if (worldIds.some((id) => !ctx.world.some((w) => w.id === id && recordUsable(w)))) b.push("Có quan sát Thế giới được gắn nhưng chưa đủ nguồn tầng 1 hoặc 2.");
-  if (!baseRateSatisfied(t, ctx)) b.push("Chưa gắn base rate dùng được, hoặc ghi chú đã tìm ở đâu và chưa thấy chưa đủ 30 ký tự.");
+  if (!baseRateSatisfied(t, ctx)) b.push("Chưa gắn base rate dùng được, hoặc ghi chú chưa đạt: tối thiểu 30 ký tự, nêu đã tìm ở đâu và kết quả chưa/không thấy.");
 
   const prior = priorDecisions(t.security, ctx.decisions ?? []);
   const seen = new Set(t.priorSeenIds ?? []);
@@ -338,7 +329,7 @@ export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
   for (const s of scenarios) {
     if (s.probability === null || !Number.isFinite(s.probability) || s.probability < 0 || s.probability > 100) b.push(`Kịch bản ${s.name}: xác suất không hợp lệ.`);
     if (!filled(s.narrative)) b.push(`Kịch bản ${s.name} chưa có diễn giải.`);
-    else if (isInsufficientSentence(s.narrative)) b.push(`Kịch bản ${s.name} không được dùng câu CHƯA ĐỦ làm diễn giải.`);
+    else if (hasInsufficientMarker(s.narrative)) b.push(`Kịch bản ${s.name} không được chứa dấu CHƯA ĐỦ trong diễn giải.`);
     if (s.returnPct === null || !Number.isFinite(s.returnPct)) b.push(`Kịch bản ${s.name} chưa có mức lợi nhuận.`);
   }
 
@@ -348,8 +339,8 @@ export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
     const invalidKill = t.kills.some((k) => !filled(k.text) || !/\d/.test(k.threshold));
     if (invalidKill) b.push("Mỗi tiêu chí hủy phải có mô tả đủ dài và ngưỡng chứa ít nhất một chữ số.");
   }
-  // V1 self-attestation flags are retained for backward compatibility, but cannot unlock any gate.
-  // Contrary evidence is proven by the required separate text fields, not by a checkbox.
+  if (!t.checks.contraryConsidered) b.push("Chưa xác nhận đã đọc bằng chứng trái chiều.");
+  if (!t.checks.notBecauseProse) b.push("Chưa xác nhận độ tin cậy không đến từ văn phong.");
   return b;
 }
 
@@ -380,12 +371,12 @@ export function confidenceOf(t: Thesis, ctx: DeskCtx): { level: ConfidenceLevel;
 export function confidenceGaps(t: Thesis, ctx: DeskCtx): string[] {
   const gaps: string[] = [];
   const company = (ctx.companies ?? []).find((c) => c.id === (t.companyId ?? ""));
-  if (company?.missingNote.includes("CHƯA ĐỦ")) gaps.push("Hồ sơ doanh nghiệp đi theo đường chưa đủ bằng chứng.");
+  if (company && hasInsufficientMarker(company.missingNote)) gaps.push("Hồ sơ doanh nghiệp đi theo đường chưa đủ bằng chứng.");
   if (company) {
     const open = qualityItems.filter((q) => (company.quality?.[q.id]?.state ?? "open") === "open");
     if (open.length) gaps.push(`Còn ${open.length} chiều chất lượng để ngỏ.`);
   }
-  if (containsInsufficient(t.texts?.macro ?? "")) gaps.push("Phần vĩ mô ghi chưa đủ bằng chứng, nên không buộc phải gắn một quan sát thế giới.");
+  if (hasInsufficientMarker(t.texts?.macro ?? "")) gaps.push("Phần vĩ mô ghi chưa đủ bằng chứng, nên không buộc phải gắn một quan sát thế giới.");
   const linked = ctx.baseRates.find((r) => r.id === (t.baseRateId ?? ""));
   if (!(linked && recordUsable(linked)) && (t.baseRateSearchNote ?? "").trim().length >= 30) gaps.push("Không gắn base rate; hồ sơ chỉ có ghi chú đã tìm nhưng chưa thấy base rate dùng được.");
   if (t.scenarios.some((s) => s.returnPct !== null && Number.isFinite(s.returnPct))) gaps.push("Mức lời trong bốn kịch bản là số bạn tự nhập. Nó chưa có nguồn, và chưa được hiệu chỉnh.");

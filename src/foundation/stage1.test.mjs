@@ -3,6 +3,10 @@
 // @ts-nocheck
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
+import * as reviewLogic from "./logic.ts";
 import {
   emptyQuality,
   thesisBlockers,
@@ -251,4 +255,151 @@ test("base rate search note with 30 characters but no search/no-find meaning doe
     .replace("chưa thấy", "ở nơi đó");
   assert.ok(t.baseRateSearchNote.length >= 30);
   assert.ok(thesisBlockers(t, { ...ctx(), baseRates: [] }).some((reason) => reason.toLowerCase().includes("base rate")));
+});
+
+// Regression tests for independent Stage-1 review, Lệnh #1.2.
+test("M1-a: no contrary-evidence confirmation stays draft", () => {
+  const t = thesis();
+  t.checks.contraryConsidered = false;
+  assert.equal(thesisReadiness(t, ctx()), "draft");
+  assert.equal(confidenceOf(t, ctx()).level, "LOW");
+});
+
+test("M1-b: no prose-confidence confirmation stays draft", () => {
+  const t = thesis();
+  t.checks.notBecauseProse = false;
+  assert.equal(thesisReadiness(t, ctx()), "draft");
+  assert.equal(confidenceOf(t, ctx()).level, "LOW");
+});
+
+test("M1-c: both confirmations with two valid sources and base rate allow ready MEDIUM", () => {
+  const t = thesis();
+  assert.equal(thesisReadiness(t, ctx()), "ready");
+  assert.equal(confidenceOf(t, ctx()).level, "MEDIUM");
+  t.checks.contraryConsidered = false;
+  assert.equal(confidenceOf(t, ctx()).level, "LOW");
+  t.checks.contraryConsidered = true;
+  t.checks.notBecauseProse = false;
+  assert.equal(confidenceOf(t, ctx()).level, "LOW");
+});
+
+test("M2-a: kill recorded after invalidation without override retains invalidated thesisSnapshot", () => {
+  const t = thesis();
+  putThesis(t);
+  assert.equal(useDesk.getState().invalidateThesis(t.id, "Thông tin mới vi phạm tiêu chí hủy đã định trước.").ok, true);
+  const result = useDesk.getState().addDecision(decisionInput(t.id, "kill"));
+  assert.equal(result.ok, true);
+  const recorded = useDesk.getState().decisions[0];
+  assert.equal(recorded.action, "kill");
+  assert.equal(recorded.override, false);
+  assert.equal(recorded.thesisSnapshot.status, "invalidated");
+});
+
+test("M2-b: invalidated thesis rejects paper even with override", () => {
+  const t = thesis();
+  putThesis(t);
+  useDesk.getState().invalidateThesis(t.id, "Thông tin mới vi phạm tiêu chí hủy đã định trước.");
+  const form = decisionInput(t.id, "paper");
+  form.override = true;
+  form.overrideReason = "Lý do giải trình ghi đè rất đầy đủ.";
+  assert.equal(useDesk.getState().addDecision(form).ok, false);
+});
+
+test("M2-c: invalidated thesis rejects hold even with override", () => {
+  const t = thesis();
+  putThesis(t);
+  useDesk.getState().invalidateThesis(t.id, "Thông tin mới vi phạm tiêu chí hủy đã định trước.");
+  const form = decisionInput(t.id, "hold");
+  form.override = true;
+  form.overrideReason = "Lý do giải trình ghi đè rất đầy đủ.";
+  assert.equal(useDesk.getState().addDecision(form).ok, false);
+});
+
+test("M3: insufficient marker plus unlocked mandate cannot hold with override", () => {
+  const t = thesis();
+  t.texts.industry = INSUFFICIENT;
+  putThesis(t, false);
+  const form = decisionInput(t.id, "hold");
+  form.override = true;
+  form.overrideReason = "Đã xem xét override có lý do đủ dài.";
+  assert.equal(useDesk.getState().addDecision(form).ok, false);
+});
+
+test("N4-a: lowercase business phrase is not an uppercase insufficient marker", () => {
+  const t = thesis();
+  t.texts.risks = "Dòng tiền hoạt động chưa đủ trả nợ vay ngắn hạn";
+  assert.equal(reviewLogic.insufficientTextCount(t), 0);
+  assert.equal(thesisReadiness(t, ctx()), "ready");
+});
+
+test("N4-b: NFD uppercase marker in risk text blocks readiness", () => {
+  const t = thesis();
+  t.texts.risks = INSUFFICIENT.normalize("NFD");
+  assert.equal(thesisReadiness(t, ctx()), "draft");
+});
+
+test("N4-c: NFD uppercase marker in graph text produces thin-ready", () => {
+  const t = thesis();
+  t.texts.graph = INSUFFICIENT.normalize("NFD");
+  assert.equal(reviewLogic.insufficientTextCount(t), 1);
+  assert.equal(thesisReadiness(t, ctx()), "thin-ready");
+});
+
+test("N4-d: NFD marker for macro text is recognized without world observation", () => {
+  const t = thesis();
+  t.worldIds = [];
+  t.texts.macro = INSUFFICIENT.normalize("NFD");
+  assert.equal(thesisReadiness(t, ctx()), "thin-ready");
+});
+
+test("N4-e: NFD marker in company missingNote opens the documented thin-file route", () => {
+  const c = company();
+  c.missingNote = INSUFFICIENT.normalize("NFD");
+  assert.deepEqual(reviewLogic.companyFileIssues(c), []);
+});
+
+test("L1: narrative containing uppercase marker within longer text blocks readiness", () => {
+  const t = thesis();
+  t.scenarios[0].narrative = "CHƯA ĐỦ BẰNG CHỨNG, cần thêm số liệu quý 3";
+  assert.equal(thesisReadiness(t, ctx()), "draft");
+});
+
+test("L2-a: searched and did not find base rate with không thấy is acceptable", () => {
+  const t = thesis();
+  t.baseRateId = "";
+  t.baseRateSearchNote = "Đã tra cứu trên HOSE và SSC, không thấy tỷ lệ nào cho ngành này";
+  assert.equal(reviewLogic.baseRateSatisfied(t, { ...ctx(), baseRates: [] }), true);
+});
+
+test("L2-b: NFD search note with không thấy is accepted after NFC normalization", () => {
+  const t = thesis();
+  t.baseRateId = "";
+  t.baseRateSearchNote = "Đã tra cứu trên HOSE và SSC, không thấy tỷ lệ nào cho ngành này".normalize("NFD");
+  assert.equal(reviewLogic.baseRateSatisfied(t, { ...ctx(), baseRates: [] }), true);
+});
+
+test("L2-c: generic baserate guess without search statement fails closed", () => {
+  const t = thesis();
+  t.baseRateId = "";
+  t.baseRateSearchNote = "Base rate này tôi nghĩ khoảng ba mươi phần trăm";
+  assert.equal(reviewLogic.baseRateSatisfied(t, { ...ctx(), baseRates: [] }), false);
+});
+
+const deskComponentFile = fileURLToPath(new URL("../components/thesis-desk.tsx", import.meta.url));
+test("M1 UI: both original blocker-only checkboxes remain editable", { skip: !existsSync(deskComponentFile) }, () => {
+  const src = readFileSync(deskComponentFile, "utf8");
+  assert.match(src, /checked=\{thesis\.checks\.contraryConsidered\}/);
+  assert.match(src, /checked=\{thesis\.checks\.notBecauseProse\}/);
+  assert.match(src, /Đã đọc bằng chứng trái, không chỉ phần ủng hộ\./);
+  assert.match(src, /Độ tin cậy này không đến từ việc đoạn văn nghe chắc\./);
+});
+
+test("CI production smoke: vite build", { skip: process.env.GITHUB_ACTIONS !== "true" }, () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const viteCli = fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url));
+  const run = spawnSync(process.execPath, [viteCli, "build"], { cwd: root, encoding: "utf8", timeout: 180_000 });
+  if (run.stdout) console.log(run.stdout);
+  if (run.stderr) console.error(run.stderr);
+  assert.equal(run.error, undefined, "vite build failed to start");
+  assert.equal(run.status, 0, "vite build failed (status " + run.status + "): " + (run.stderr ?? ""));
 });

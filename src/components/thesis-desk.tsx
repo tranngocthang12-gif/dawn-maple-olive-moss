@@ -465,7 +465,24 @@ export function ThesisDesk() {
               <Field label="Ghi chú tìm base rate (nếu chưa gắn dòng dùng được)" hint="Nêu đã tìm ở đâu và chưa thấy; tối thiểu 30 ký tự. Ô tích V1 không còn được tính.">
                 <textarea className={areaClass} value={thesis.baseRateSearchNote ?? ""} onChange={(e) => updateThesis(thesis.id, { baseRateSearchNote: e.target.value })} />
               </Field>
-              <p className="text-sm text-muted">Bằng chứng trái chiều và độ tin cậy được xét bằng nội dung và nguồn, không bằng ô tự xác nhận.</p>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={thesis.checks.contraryConsidered}
+                  onChange={(e) => updateThesis(thesis.id, { checks: { ...thesis.checks, contraryConsidered: e.target.checked } })}
+                />
+                Đã đọc bằng chứng trái, không chỉ phần ủng hộ.
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={thesis.checks.notBecauseProse}
+                  onChange={(e) => updateThesis(thesis.id, { checks: { ...thesis.checks, notBecauseProse: e.target.checked } })}
+                />
+                Độ tin cậy này không đến từ việc đoạn văn nghe chắc.
+              </label>
               <Field label="Ghi chú vốn của Owner" hint="Hệ thống không điền ô này và không biến nó thành lệnh.">
                 <textarea
                   className={areaClass}

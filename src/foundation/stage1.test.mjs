@@ -1,3 +1,4 @@
+// @ts-nocheck -- Runtime assertions validate legacy JavaScript fixtures; TypeScript app sources remain strict.
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {

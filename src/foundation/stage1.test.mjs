@@ -1,4 +1,6 @@
-// @ts-nocheck -- Runtime assertions validate legacy JavaScript fixtures; TypeScript app sources remain strict.
+// The legacy JSON fixtures intentionally have shapes that strict TS rejects; runtime tests verify migration.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {

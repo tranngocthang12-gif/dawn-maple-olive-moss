@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { EvidenceStamp, Field, Note, Stamp, areaClass, inputClass } from "@/components/ui";
 import { confidenceGaps, confidenceOf, expectedReturn, priorDecisions, scenarioSum, scenarioWarnings, thesisBlockers, thesisReadiness, independentSourceCount, claimIssues } from "@/foundation/logic";
 import { useDesk } from "@/foundation/store";
@@ -75,7 +75,7 @@ export function ThesisDesk() {
   const thesis = theses.find((t) => t.id === activeId) ?? theses[0] ?? null;
   const ctx = { mandate, world, baseRates, companies, decisions };
 
-  const blockers = useMemo(() => (thesis ? thesisBlockers(thesis, ctx) : []), [thesis, mandate, world, baseRates, companies, decisions]);
+  const blockers = thesis ? thesisBlockers(thesis, ctx) : [];
   const readiness = thesis ? thesisReadiness(thesis, ctx) : "draft";
   const invalidated = readiness === "invalidated";
   const confidence = thesis ? confidenceOf(thesis, ctx) : null;

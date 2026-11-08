@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { EvidenceStamp, Field, Note, Stamp, areaClass, inputClass } from "@/components/ui";
-import { confidenceGaps, confidenceOf, expectedReturn, priorDecisions, scenarioSum, scenarioWarnings, thesisBlockers, claimIssues } from "@/foundation/logic";
+import { confidenceGaps, confidenceOf, expectedReturn, priorDecisions, scenarioSum, scenarioWarnings, thesisBlockers, thesisReadiness, independentSourceCount, claimIssues } from "@/foundation/logic";
 import { useDesk } from "@/foundation/store";
 import type { Decision, EvidenceClass, ScenarioName, SourceTier, ThesisTexts } from "@/foundation/types";
 
@@ -54,7 +54,8 @@ export function ThesisDesk() {
   const addKill = useDesk((s) => s.addKill);
   const updateKill = useDesk((s) => s.updateKill);
   const removeKill = useDesk((s) => s.removeKill);
-  const refreshStatus = useDesk((s) => s.refreshStatus);
+  const invalidateThesis = useDesk((s) => s.invalidateThesis);
+  const createSuccessor = useDesk((s) => s.createSuccessor);
   const mandate = useDesk((s) => s.mandate);
   const world = useDesk((s) => s.world);
   const baseRates = useDesk((s) => s.baseRates);
@@ -62,6 +63,8 @@ export function ThesisDesk() {
   const decisions = useDesk((s) => s.decisions);
   const [screen, setScreen] = useState<(typeof screens)[number]["id"]>("id");
   const [bookError, setBookError] = useState("");
+  const [invalidationReason, setInvalidationReason] = useState("");
+  const [invalidationError, setInvalidationError] = useState("");
 
   const openThesis = () => {
     const result = createThesis();
@@ -72,11 +75,9 @@ export function ThesisDesk() {
   const thesis = theses.find((t) => t.id === activeId) ?? theses[0] ?? null;
   const ctx = { mandate, world, baseRates, companies, decisions };
 
-  useEffect(() => {
-    if (thesis && thesis.status !== "invalidated") refreshStatus(thesis.id);
-  }, [thesis, refreshStatus, companies, mandate, world, baseRates, decisions]);
-
   const blockers = useMemo(() => (thesis ? thesisBlockers(thesis, ctx) : []), [thesis, mandate, world, baseRates, companies, decisions]);
+  const readiness = thesis ? thesisReadiness(thesis, ctx) : "draft";
+  const invalidated = readiness === "invalidated";
   const confidence = thesis ? confidenceOf(thesis, ctx) : null;
   const gaps = thesis ? confidenceGaps(thesis, ctx) : [];
   const ev = thesis ? expectedReturn(thesis.scenarios) : null;
@@ -139,8 +140,8 @@ export function ThesisDesk() {
 
       <div className="min-w-0 max-w-3xl">
         <div className="flex flex-wrap items-center gap-2">
-          <Stamp tone={thesis.status === "ready" ? "solid" : thesis.status === "invalidated" ? "accent" : "muted"}>
-            {thesis.status === "ready" ? "Sẵn sàng để Owner đọc" : thesis.status === "invalidated" ? "Đã hủy" : "Bản nháp"}
+          <Stamp tone={readiness === "ready" ? "solid" : readiness === "draft" ? "muted" : "accent"}>
+            {readiness === "ready" ? "Sẵn sàng để Owner đọc" : readiness === "thin-ready" ? "Sẵn sàng mỏng" : invalidated ? "Đã hủy" : "Bản nháp"}
           </Stamp>
           <Stamp>{confidence?.level ?? "LOW"}</Stamp>
           <Stamp tone="accent">HIGH đang khóa</Stamp>
@@ -154,7 +155,7 @@ export function ThesisDesk() {
           </ul>
         ) : null}
         <p className="mt-3 text-sm text-muted">
-          {blockers.length === 0 ? "Đủ ô để đọc. Vẫn không phải lệnh." : `${blockers.length} việc còn chặn trạng thái sẵn sàng.`}
+          {invalidated ? "Thesis đã hủy: bản này chỉ đọc, không được mở lại." : blockers.length === 0 ? "Đủ ô để đọc. Vẫn không phải lệnh." : `${blockers.length} việc còn chặn trạng thái sẵn sàng.`}
         </p>
 
         <div className="mt-4 flex gap-2 overflow-x-auto lg:hidden">
@@ -170,7 +171,7 @@ export function ThesisDesk() {
           ))}
         </div>
 
-        <div className="mt-6 space-y-5">
+        <fieldset disabled={invalidated} className="mt-6 min-w-0 space-y-5">
           {screen === "id" ? (
             <>
               <Note>
@@ -460,45 +461,11 @@ export function ThesisDesk() {
                   Thêm tiêu chí
                 </button>
               </div>
-              <Field label="Số nguồn độc lập" hint="Đếm nguồn thật sự khác nhau, không đếm số lần nhắc lại.">
-                <input
-                  className={`${inputClass} tabular-nums`}
-                  inputMode="numeric"
-                  value={thesis.checks.independentSources || ""}
-                  onChange={(e) =>
-                    updateThesis(thesis.id, {
-                      checks: { ...thesis.checks, independentSources: Math.max(0, Math.floor(num(e.target.value) ?? 0)) },
-                    })
-                  }
-                />
+              <p className="text-sm text-muted">Nguồn độc lập hợp lệ (do mã đếm): {independentSourceCount(thesis)}. MEDIUM yêu cầu ít nhất 2 nguồn Sự thật/Dữ liệu tầng 1–2, có ngày và được phép dùng.</p>
+              <Field label="Ghi chú tìm base rate (nếu chưa gắn dòng dùng được)" hint="Nêu đã tìm ở đâu và chưa thấy; tối thiểu 30 ký tự. Ô tích V1 không còn được tính.">
+                <textarea className={areaClass} value={thesis.baseRateSearchNote ?? ""} onChange={(e) => updateThesis(thesis.id, { baseRateSearchNote: e.target.value })} />
               </Field>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={thesis.checks.baseRateCited}
-                  onChange={(e) => updateThesis(thesis.id, { checks: { ...thesis.checks, baseRateCited: e.target.checked } })}
-                />
-                Đã nêu base rate, hoặc đã ghi rõ là chưa có base rate đáng dùng.
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={thesis.checks.contraryConsidered}
-                  onChange={(e) => updateThesis(thesis.id, { checks: { ...thesis.checks, contraryConsidered: e.target.checked } })}
-                />
-                Đã đọc bằng chứng trái, không chỉ phần ủng hộ.
-              </label>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={thesis.checks.notBecauseProse}
-                  onChange={(e) => updateThesis(thesis.id, { checks: { ...thesis.checks, notBecauseProse: e.target.checked } })}
-                />
-                Độ tin cậy này không đến từ việc đoạn văn nghe chắc.
-              </label>
+              <p className="text-sm text-muted">Bằng chứng trái chiều và độ tin cậy được xét bằng nội dung và nguồn, không bằng ô tự xác nhận.</p>
               <Field label="Ghi chú vốn của Owner" hint="Hệ thống không điền ô này và không biến nó thành lệnh.">
                 <textarea
                   className={areaClass}
@@ -506,20 +473,7 @@ export function ThesisDesk() {
                   onChange={(e) => updateThesis(thesis.id, { ownerCapitalNote: e.target.value })}
                 />
               </Field>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="border border-line px-4 py-3 text-sm"
-                  onClick={() => updateThesis(thesis.id, { status: "invalidated" })}
-                >
-                  Đánh dấu đã hủy
-                </button>
-                {thesis.status === "invalidated" ? (
-                  <button type="button" className="border border-line px-4 py-3 text-sm" onClick={() => updateThesis(thesis.id, { status: "draft" })}>
-                    Mở lại để sửa
-                  </button>
-                ) : null}
-              </div>
+
             </>
           ) : null}
 
@@ -561,9 +515,36 @@ export function ThesisDesk() {
               <Section title="Ghi chú vốn của Owner" body={thesis.ownerCapitalNote || "Owner chưa ghi. Hệ thống không đề xuất tỷ trọng."} />
             </article>
           ) : null}
-        </div>
+        </fieldset>
 
-        {blockers.length > 0 && screen !== "out" ? (
+        {invalidated ? (
+          <div className="mt-6 border-t border-line pt-4">
+            <p className="text-sm text-muted">Thesis này đã hủy và chỉ đọc. Mọi tu chính trước khi hủy vẫn được giữ.</p>
+            <ul className="mt-3 space-y-2 text-sm text-muted">
+              {(thesis.amendments ?? []).map((a) => <li key={a.id}>{new Date(a.at).toLocaleString("vi-VN")}: {a.note}</li>)}
+            </ul>
+            <button type="button" className="mt-4 border border-accent px-4 py-3 text-sm text-accent" onClick={() => {
+              const result = createSuccessor(thesis.id);
+              if (!result.ok) setBookError(result.reason);
+              else { setBookError(""); setScreen("id"); setInvalidationReason(""); }
+            }}>Tạo thesis kế tiếp</button>
+            {bookError ? <p className="mt-2 text-sm text-accent">{bookError}</p> : null}
+          </div>
+        ) : screen === "kill" ? (
+          <div className="mt-6 space-y-3 border-t border-line pt-4">
+            <Field label="Lý do đánh dấu đã hủy (ít nhất 12 ký tự)">
+              <textarea className={areaClass} value={invalidationReason} onChange={(e) => setInvalidationReason(e.target.value)} />
+            </Field>
+            <button type="button" className="border border-accent px-4 py-3 text-sm text-accent" onClick={() => {
+              const result = invalidateThesis(thesis.id, invalidationReason);
+              setInvalidationError(result.ok ? "" : result.reason);
+              if (result.ok) setInvalidationReason("");
+            }}>Đánh dấu đã hủy</button>
+            {invalidationError ? <p className="text-sm text-accent">{invalidationError}</p> : null}
+          </div>
+        ) : null}
+
+        {blockers.length > 0 && screen !== "out" && !invalidated ? (
           <div className="mt-8 border-t border-line pt-4">
             <h2 className="text-sm text-fg">Còn chặn</h2>
             <ul className="mt-2 space-y-1 text-sm text-muted">

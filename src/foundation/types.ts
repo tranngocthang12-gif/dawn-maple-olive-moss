@@ -42,10 +42,12 @@ export type KillCriterion = {
 };
 
 export type ConfidenceChecks = {
-  independentSources: number;
-  baseRateCited: boolean;
   contraryConsidered: boolean;
   notBecauseProse: boolean;
+  /** Legacy V1 field. Preserved on migration but ignored by gates. */
+  independentSources?: number;
+  /** Legacy V1 field. Preserved on migration but ignored by gates. */
+  baseRateCited?: boolean;
 };
 
 export type ThesisTexts = {
@@ -74,13 +76,17 @@ export type ThesisTexts = {
   invalidation: string;
 };
 
-export type ThesisStatus = "draft" | "ready" | "invalidated";
+export type Amendment = { id: string; at: string; note: string };
+
+export type ThesisStatus = "invalidated";
+export type ThesisReadiness = "draft" | "ready" | "thin-ready" | "invalidated";
 
 export type Thesis = {
   id: string;
   createdAt: string;
   updatedAt: string;
-  status: ThesisStatus;
+  /** Only terminal invalidation is persisted. draft/ready/thin-ready are derived. */
+  status?: ThesisStatus;
   security: string;
   venue: string;
   currency: string;
@@ -93,9 +99,12 @@ export type Thesis = {
   ownerCapitalNote: string;
   ring: "" | "inner" | "outer";
   baseRateId: string;
+  baseRateSearchNote: string;
   worldIds: string[];
   companyId: string;
   priorSeenIds: string[];
+  supersedes: string;
+  amendments: Amendment[];
 };
 
 export type PostMortemClass =
@@ -109,8 +118,6 @@ export type PostMortemClass =
   | "mixed";
 
 export type DecisionAction = "observe" | "pass" | "paper" | "hold" | "kill";
-
-export type Amendment = { id: string; at: string; note: string };
 
 export type Decision = {
   id: string;

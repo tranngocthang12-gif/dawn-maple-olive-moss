@@ -14,7 +14,7 @@ function JournalPage() {
         <PageHeader
           kicker="Trí nhớ chống hồi tố"
           title="Quyết định tốt hay chỉ may, chỉ hỏi được nếu bản lúc ấy còn nguyên."
-          lede="Ngày, giá, thesis, kỳ vọng, xác suất, rủi ro, kích thước, chất xúc tác, điều kiện hủy, quan điểm khác. Sau khi khóa, lõi không sửa. Kết cục đến sau không được viết lại lý do."
+          lede="Ngày, giá, luận điểm, kỳ vọng, xác suất, rủi ro, kích thước, chất xúc tác, điều kiện hủy, quan điểm khác. Sau khi khóa, lý do không sửa. Kết quả ghi sau, ở dòng riêng. Chưa ghi kết quả thì chưa phải kinh nghiệm. Kết quả tốt không chứng minh cách làm đúng."
         />
       </div>
       <JournalDesk />

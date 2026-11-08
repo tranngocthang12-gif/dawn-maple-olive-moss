@@ -94,6 +94,8 @@ export type Thesis = {
   ring: "" | "inner" | "outer";
   baseRateId: string;
   worldIds: string[];
+  companyId: string;
+  priorSeenIds: string[];
 };
 
 export type PostMortemClass =
@@ -118,6 +120,9 @@ export type Decision = {
   action: DecisionAction;
   thesisId: string | null;
   thesisSnapshot: Thesis | null;
+  companySeal: CompanySeal | null;
+  worldSnapshot: WorldObs[];
+  baseRateSnapshot: BaseRate | null;
   expectedReturn: string;
   probabilityNote: string;
   risk: string;
@@ -194,4 +199,85 @@ export type BaseRate = {
   permitted: boolean;
   caveat: string;
   supersedes: string;
+};
+
+export type ReportingStandard = "" | "VAS" | "IFRS" | "US-GAAP" | "other";
+
+export type QualityId =
+  | "receivables"
+  | "inventory"
+  | "accruals"
+  | "capitalization"
+  | "related"
+  | "dilution"
+  | "offbalance"
+  | "auditor"
+  | "cfo";
+
+export type QualityState = "open" | "clear" | "question" | "flag";
+
+export type QualityRow = {
+  state: QualityState;
+  note: string;
+  source: string;
+};
+
+export type CompanyFact = {
+  id: string;
+  at: string;
+  text: string;
+  source: string;
+  tier: SourceTier;
+  asOf: string;
+  unit: string;
+  permitted: boolean;
+};
+
+export type CompanyFile = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "draft" | "filed";
+  name: string;
+  venue: string;
+  standard: ReportingStandard;
+  standardNote: string;
+  business: string;
+  missingNote: string;
+  facts: CompanyFact[];
+  quality: Record<QualityId, QualityRow>;
+  sealId: string;
+};
+
+export type CompanySeal = {
+  id: string;
+  companyId: string;
+  filedAt: string;
+  sealed: boolean;
+  name: string;
+  venue: string;
+  standard: ReportingStandard;
+  standardNote: string;
+  business: string;
+  missingNote: string;
+  facts: CompanyFact[];
+  quality: Record<QualityId, QualityRow>;
+};
+
+export type SignalStatus = "draft" | "alive" | "dead";
+
+export type Signal = {
+  id: string;
+  at: string;
+  updatedAt: string;
+  family: string;
+  hypothesis: string;
+  mechanism: string;
+  lag: string;
+  death: string;
+  rights: string;
+  rightsOk: boolean;
+  status: SignalStatus;
+  diedAt: string;
+  deathReason: string;
 };

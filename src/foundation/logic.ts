@@ -1,16 +1,53 @@
 import type {
   BaseRate,
   Claim,
+  CompanyFile,
+  CompanySeal,
   ConfidenceChecks,
   Decision,
   EvidenceClass,
   Mandate,
+  QualityId,
+  QualityRow,
   Scenario,
+  Signal,
   SourceTier,
   Thesis,
   ThesisTexts,
   WorldObs,
 } from "./types";
+import { sensors } from "./doctrine";
+
+export const caps = {
+  theses: 40,
+  decisions: 200,
+  ledger: 200,
+  world: 200,
+  baseRates: 200,
+  companies: 40,
+  facts: 80,
+  signals: 80,
+  seals: 200,
+} as const;
+
+export const fullBook = "Sổ này đã đầy. Hãy tải sổ về máy trước. Hệ thống không xóa dòng cũ để lấy chỗ.";
+
+export function sealFromCompany(c: CompanyFile, filedAt: string, id: string, sealed: boolean): CompanySeal {
+  return {
+    id,
+    companyId: c.id,
+    filedAt,
+    sealed,
+    name: c.name,
+    venue: c.venue,
+    standard: c.standard,
+    standardNote: c.standardNote,
+    business: c.business,
+    missingNote: c.missingNote,
+    facts: c.facts.map((f) => ({ ...f })),
+    quality: structuredClone(c.quality ?? emptyQuality()),
+  };
+}
 
 export const TEXT_KEYS: { key: keyof ThesisTexts; step: string; label: string }[] = [
   { key: "business", step: "2", label: "Mô hình kinh doanh" },
@@ -159,12 +196,101 @@ export function recordUsable(row: { tier: SourceTier; permitted: boolean; source
   return row.permitted && (row.tier === "t1" || row.tier === "t2") && row.source.trim().length >= 3 && row.asOf.trim().length >= 8;
 }
 
-export function thesisBlockers(t: Thesis, ctx: { mandate: Mandate; world: WorldObs[]; baseRates: BaseRate[] }): string[] {
+export const qualityItems: { id: QualityId; label: string; ask: string }[] = [
+  { id: "receivables", label: "Phải thu", ask: "Phải thu có chạy nhanh hơn doanh thu không? Nguồn nào, kỳ nào?" },
+  { id: "inventory", label: "Tồn kho", ask: "Vòng quay, giảm giá, và hàng chậm. Một tỷ lệ không phải kết luận." },
+  { id: "accruals", label: "Dồn tích", ask: "Lợi nhuận và tiền lệch về phía nào, trong mấy kỳ?" },
+  { id: "capitalization", label: "Vốn hóa chi phí", ask: "Cái gì được đưa vào tài sản thay vì chi phí kỳ này?" },
+  { id: "related", label: "Bên liên quan", ask: "Với ai, điều khoản nào, có lệch giá độc lập không?" },
+  { id: "dilution", label: "Pha loãng", ask: "Số cổ phiếu mới, quyền chọn, trái phiếu chuyển đổi. Đơn vị là cổ phiếu." },
+  { id: "offbalance", label: "Ngoài bảng", ask: "Bảo lãnh, thuê, cam kết. Không gộp VAS với IFRS hay US GAAP." },
+  { id: "auditor", label: "Kiểm toán", ask: "Đổi kiểm toán hoặc ý kiến không nguyên vẹn. Câu hỏi, chưa phải gian lận." },
+  { id: "cfo", label: "CFO và vốn", ask: "Đổi CFO, cổ tức, mua lại, thâu tóm. Ghi sự kiện, không ghi ý định." },
+];
+
+export function emptyQuality(): Record<QualityId, QualityRow> {
+  const row = (): QualityRow => ({ state: "open", note: "", source: "" });
+  return {
+    receivables: row(),
+    inventory: row(),
+    accruals: row(),
+    capitalization: row(),
+    related: row(),
+    dilution: row(),
+    offbalance: row(),
+    auditor: row(),
+    cfo: row(),
+  };
+}
+
+export function companyFileIssues(c: CompanyFile): string[] {
+  const b: string[] = [];
+  if (c.name.trim().length < 2) b.push("Chưa có tên doanh nghiệp.");
+  if (c.venue.trim().length < 2) b.push("Chưa có sàn hoặc nơi báo cáo.");
+  if (!c.standard) b.push("Chưa chọn chuẩn báo cáo. VAS, IFRS và US GAAP không phải một thứ.");
+  if (c.standardNote.trim().length < 12) b.push("Cần ghi chuẩn đang dùng và cái nó không so sánh được.");
+  if (c.business.trim().length < 12) b.push("Chưa mô tả doanh nghiệp bán gì, cho ai.");
+  const usable = c.facts.filter((f) => recordUsable(f) && f.text.trim().length >= 2);
+  const thin = c.missingNote.includes("CHƯA ĐỦ") && c.missingNote.trim().length >= 12;
+  if (usable.length === 0 && !thin) {
+    b.push("Chưa có sự kiện nguồn tầng 1 hoặc 2. Nếu chưa có, ghi CHƯA ĐỦ BẰNG CHỨNG.");
+  }
+  const open = qualityItems.filter((q) => (c.quality?.[q.id]?.state ?? "open") === "open");
+  if (open.length > 0 && !thin) {
+    b.push("Còn chiều chất lượng để ngỏ. Trả lời từng chiều, hoặc ghi CHƯA ĐỦ BẰNG CHỨNG.");
+  }
+  for (const q of qualityItems) {
+    const row = c.quality?.[q.id];
+    if (!row || row.state === "open") continue;
+    const min = row.state === "clear" ? 8 : 12;
+    if (row.note.trim().length < min) b.push(`${q.label} cần ghi chú dài hơn. Một nhãn không phải bằng chứng.`);
+    if (row.state === "clear" && row.source.trim().length < 3) b.push(`${q.label}: chưa thấy vấn đề vẫn phải có nguồn.`);
+  }
+  return b;
+}
+
+export function signalAliveIssues(s: Pick<Signal, "family" | "hypothesis" | "mechanism" | "lag" | "death" | "rights" | "rightsOk">): string[] {
+  const b: string[] = [];
+  if (!sensors.some((x) => x.id === s.family)) b.push("Chưa chọn họ cảm biến.");
+  if (s.hypothesis.trim().length < 12) b.push("Giả thuyết quá ngắn. Viết điều sẽ sai nếu tín hiệu sai.");
+  if (s.mechanism.trim().length < 12) b.push("Chưa có cơ chế nhân quả. Tương quan không đủ để cho sống.");
+  if (s.lag.trim().length < 8) b.push("Chưa ghi độ trễ, và cửa sổ đó còn giao dịch được không.");
+  if (s.death.trim().length < 12) b.push("Chưa viết cách tín hiệu này chết.");
+  if (!s.rightsOk || s.rights.trim().length < 12) b.push("Chưa xác nhận dữ liệu được phép dùng và không phải thông tin nội gián.");
+  if (s.family === "physical" && !s.rights.toLowerCase().includes("hợp pháp")) {
+    b.push("Cảm biến vật lý phải ghi vì sao việc thu thập là hợp pháp.");
+  }
+  return b;
+}
+
+export type DeskCtx = {
+  mandate: Mandate;
+  world: WorldObs[];
+  baseRates: BaseRate[];
+  companies: CompanyFile[];
+  decisions?: Decision[];
+};
+
+export function securityKey(name: string): string {
+  return name.trim().toLocaleLowerCase("vi").replace(/\s+/g, " ");
+}
+
+export function priorDecisions(security: string, decisions: Decision[]): Decision[] {
+  const key = securityKey(security);
+  if (key.length < 2) return [];
+  return (decisions ?? []).filter((d) => !d.voided && securityKey(d.security) === key);
+}
+
+export function thesisBlockers(t: Thesis, ctx: DeskCtx): string[] {
   const b: string[] = [];
   if (!ctx.mandate.locked) b.push("Ủy thác chưa khóa. Hồ sơ không thể sẵn sàng.");
   const ring = t.ring ?? "";
   if (ring !== "inner" && ring !== "outer") b.push("Chưa chọn vành trong hoặc vành ngoài.");
   if (t.security.trim().length < 2) b.push("Chưa có danh tính chứng khoán.");
+  const company = (ctx.companies ?? []).find((c) => c.id === (t.companyId ?? ""));
+  if (!company || company.status !== "filed") {
+    b.push("Chưa gắn hồ sơ doanh nghiệp đã nộp. Có thể nộp với dòng CHƯA ĐỦ BẰNG CHỨNG, nhưng không được bỏ qua.");
+  }
   if (!t.venue.trim() || !t.horizon.trim()) b.push("Chưa có sàn và chân trời thời gian.");
   for (const field of TEXT_KEYS) {
     if (!filled(t.texts[field.key])) b.push(`Còn trống: ${field.label}. Có thể ghi CHƯA ĐỦ BẰNG CHỨNG.`);
@@ -179,6 +305,12 @@ export function thesisBlockers(t: Thesis, ctx: { mandate: Mandate; world: WorldO
   const linked = ctx.baseRates.find((r) => r.id === (t.baseRateId ?? ""));
   const rateOk = t.checks.baseRateCited || Boolean(linked && recordUsable(linked));
   if (!rateOk) b.push("Chưa gắn base rate dùng được, hoặc chưa xác nhận là chưa có base rate.");
+  const prior = priorDecisions(t.security, ctx.decisions ?? []);
+  const seen = new Set(t.priorSeenIds ?? []);
+  const unseen = prior.filter((d) => !seen.has(d.id));
+  if (unseen.length) {
+    b.push(`Có ${unseen.length} quyết định cũ của mã này chưa đọc lại. Cuộc trò chuyện mới không được kể từ đầu.`);
+  }
   if (t.claims.length === 0) b.push("Chưa có claim nào được phân loại.");
   const badClaims = t.claims.filter((c) => claimIssues(c).length > 0);
   if (badClaims.length) b.push("Có claim chưa đạt chuẩn phân loại — xem mục bằng chứng.");
@@ -202,10 +334,7 @@ export function thesisBlockers(t: Thesis, ctx: { mandate: Mandate; world: WorldO
 
 export type ConfidenceLevel = "LOW" | "MEDIUM" | "HIGH";
 
-export function confidenceOf(
-  t: Thesis,
-  ctx: { mandate: Mandate; world: WorldObs[]; baseRates: BaseRate[] },
-): { level: ConfidenceLevel; lockedHigh: true; reasons: string[] } {
+export function confidenceOf(t: Thesis, ctx: DeskCtx): { level: ConfidenceLevel; lockedHigh: true; reasons: string[] } {
   const reasons: string[] = [
     "HIGH bị khóa đến khi Phase 7 có mẫu calibration. Khóa này là ràng buộc Foundation V1, không phải một đánh giá về văn phong.",
   ];
@@ -226,6 +355,33 @@ export function confidenceOf(
     reasons.push("MEDIUM là trần ở Foundation V1. Hệ thống chưa được calibration.");
   }
   return { level: medium ? "MEDIUM" : "LOW", lockedHigh: true, reasons };
+}
+
+export function confidenceGaps(t: Thesis, ctx: DeskCtx): string[] {
+  const gaps: string[] = [];
+  const company = (ctx.companies ?? []).find((c) => c.id === (t.companyId ?? ""));
+  if (company?.missingNote.includes("CHƯA ĐỦ")) {
+    gaps.push("Hồ sơ doanh nghiệp đi theo đường chưa đủ bằng chứng.");
+  }
+  if (company) {
+    const open = qualityItems.filter((q) => (company.quality?.[q.id]?.state ?? "open") === "open");
+    if (open.length) gaps.push(`Còn ${open.length} chiều chất lượng để ngỏ.`);
+  }
+  if ((t.texts?.macro ?? "").includes("CHƯA ĐỦ")) {
+    gaps.push("Phần vĩ mô ghi chưa đủ bằng chứng, nên không buộc phải gắn một quan sát thế giới.");
+  }
+  const linked = ctx.baseRates.find((r) => r.id === (t.baseRateId ?? ""));
+  if (t.checks.baseRateCited && !(linked && recordUsable(linked))) {
+    gaps.push("Tỷ lệ quá khứ chỉ là ô đã đánh dấu, chưa gắn một dòng trong sổ.");
+  }
+  if (t.scenarios.some((s) => s.returnPct !== null && Number.isFinite(s.returnPct))) {
+    gaps.push("Mức lời trong bốn kịch bản là số bạn tự nhập. Nó chưa có nguồn, và chưa được hiệu chỉnh.");
+  }
+  const pending = priorDecisions(t.security, ctx.decisions ?? []).filter((d) => d.outcome === "pending" || d.outcome === "");
+  if (pending.length) {
+    gaps.push(`${pending.length} quyết định của mã này chưa có kết quả. Chưa thể gọi đó là kinh nghiệm thắng hay thua.`);
+  }
+  return gaps;
 }
 
 export function processScore(d: Decision): { score: number; parts: { label: string; got: boolean }[] } {

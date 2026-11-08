@@ -8,6 +8,8 @@ const nav = [
   { href: "/mandate", label: "Ủy thác" },
   { href: "/world", label: "Thế giới" },
   { href: "/baserates", label: "Base rate" },
+  { href: "/companies", label: "Doanh nghiệp" },
+  { href: "/signals", label: "Tín hiệu" },
   { href: "/protocol", label: "Quy trình" },
   { href: "/probability", label: "Xác suất" },
   { href: "/journal", label: "Nhật ký" },
@@ -17,7 +19,6 @@ const nav = [
   { href: "/evidence", label: "Bằng chứng" },
   { href: "/library", label: "Thư viện" },
   { href: "/cases", label: "Án lệ" },
-  { href: "/signals", label: "Tín hiệu" },
   { href: "/gates", label: "Nghiệm thu" },
 ] as const;
 

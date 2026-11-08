@@ -56,7 +56,7 @@ export function ProbabilityBench() {
       setMessage("Không tính được hậu nghiệm từ cặp số này.");
       return;
     }
-    addLedger({
+    const saved = addLedger({
       statement: statement.trim(),
       priorPct: priorN,
       lr: lr.trim() === "" ? null : lrN,
@@ -65,6 +65,10 @@ export function ProbabilityBench() {
       klass,
       corrects: corrects.trim(),
     });
+    if (!saved.ok) {
+      setMessage(saved.reason);
+      return;
+    }
     setStatement("");
     setNote("");
     setCorrects("");

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { EvidenceStamp, Field, Note, Stamp, areaClass, inputClass } from "@/components/ui";
-import { confidenceOf, expectedReturn, scenarioSum, scenarioWarnings, thesisBlockers, claimIssues } from "@/foundation/logic";
+import { confidenceGaps, confidenceOf, expectedReturn, priorDecisions, scenarioSum, scenarioWarnings, thesisBlockers, claimIssues } from "@/foundation/logic";
 import { useDesk } from "@/foundation/store";
-import type { EvidenceClass, ScenarioName, SourceTier, ThesisTexts } from "@/foundation/types";
+import type { Decision, EvidenceClass, ScenarioName, SourceTier, ThesisTexts } from "@/foundation/types";
 
 const screens = [
   { id: "id", title: "Danh tính" },
@@ -58,17 +58,27 @@ export function ThesisDesk() {
   const mandate = useDesk((s) => s.mandate);
   const world = useDesk((s) => s.world);
   const baseRates = useDesk((s) => s.baseRates);
+  const companies = useDesk((s) => s.companies);
+  const decisions = useDesk((s) => s.decisions);
   const [screen, setScreen] = useState<(typeof screens)[number]["id"]>("id");
+  const [bookError, setBookError] = useState("");
+
+  const openThesis = () => {
+    const result = createThesis();
+    if (!result.ok) setBookError(result.reason);
+    else setBookError("");
+  };
 
   const thesis = theses.find((t) => t.id === activeId) ?? theses[0] ?? null;
-  const ctx = { mandate, world, baseRates };
+  const ctx = { mandate, world, baseRates, companies, decisions };
 
   useEffect(() => {
     if (thesis && thesis.status !== "invalidated") refreshStatus(thesis.id);
-  }, [thesis, refreshStatus]);
+  }, [thesis, refreshStatus, companies, mandate, world, baseRates, decisions]);
 
-  const blockers = useMemo(() => (thesis ? thesisBlockers(thesis, ctx) : []), [thesis, mandate, world, baseRates]);
+  const blockers = useMemo(() => (thesis ? thesisBlockers(thesis, ctx) : []), [thesis, mandate, world, baseRates, companies, decisions]);
   const confidence = thesis ? confidenceOf(thesis, ctx) : null;
+  const gaps = thesis ? confidenceGaps(thesis, ctx) : [];
   const ev = thesis ? expectedReturn(thesis.scenarios) : null;
   const sum = thesis ? scenarioSum(thesis.scenarios) : null;
   const warnings = thesis ? scenarioWarnings(thesis.scenarios) : [];
@@ -79,9 +89,10 @@ export function ThesisDesk() {
         <Note>
           Chưa có hồ sơ. Quy trình này là một khung trống. Nó không điền tên công ty, không điền số, và không kết luận giúp Owner.
         </Note>
-        <button type="button" className="mt-4 bg-accent px-4 py-3 text-sm text-ink" onClick={() => createThesis()}>
+        <button type="button" className="mt-4 bg-accent px-4 py-3 text-sm text-ink" onClick={openThesis}>
           Mở một hồ sơ trống
         </button>
+        {bookError ? <p className="mt-3 text-sm text-accent">{bookError}</p> : null}
       </div>
     );
   }
@@ -107,9 +118,10 @@ export function ThesisDesk() {
             </button>
           ))}
         </div>
-        <button type="button" className="mt-2 border border-line px-3 py-2 text-sm text-fg" onClick={() => createThesis()}>
+        <button type="button" className="mt-2 border border-line px-3 py-2 text-sm text-fg" onClick={openThesis}>
           Hồ sơ mới
         </button>
+        {bookError ? <p className="mt-2 text-sm text-accent">{bookError}</p> : null}
         <ol className="mt-6 hidden space-y-1 lg:block">
           {screens.map((s, i) => (
             <li key={s.id}>
@@ -134,6 +146,13 @@ export function ThesisDesk() {
           <Stamp tone="accent">HIGH đang khóa</Stamp>
           <Stamp>Chưa hiệu chỉnh</Stamp>
         </div>
+        {gaps.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-sm text-muted">
+            {gaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        ) : null}
         <p className="mt-3 text-sm text-muted">
           {blockers.length === 0 ? "Đủ ô để đọc. Vẫn không phải lệnh." : `${blockers.length} việc còn chặn trạng thái sẵn sàng.`}
         </p>
@@ -170,9 +189,20 @@ export function ThesisDesk() {
                   <option value="outer">Ngoài — chỉ theo dõi cơ chế</option>
                 </select>
               </Field>
+              <Field label="Hồ sơ doanh nghiệp" hint="Hồ sơ luận điểm không sẵn sàng nếu doanh nghiệp chưa được nộp. CHƯA ĐỦ BẰNG CHỨNG là được. Bỏ trống thì không.">
+                <select className={inputClass} value={thesis.companyId ?? ""} onChange={(e) => updateThesis(thesis.id, { companyId: e.target.value })}>
+                  <option value="">Chưa gắn</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {(c.name.trim() || "Chưa đặt tên") + (c.status === "filed" ? " · đã đóng" : " · nháp")}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Field label="Chứng khoán">
                 <input className={inputClass} value={thesis.security} onChange={(e) => updateThesis(thesis.id, { security: e.target.value })} />
               </Field>
+              <PriorCalls security={thesis.security} seen={thesis.priorSeenIds ?? []} decisions={decisions} onSeen={(ids) => updateThesis(thesis.id, { priorSeenIds: ids })} />
               <Field label="Sàn hoặc thị trường">
                 <input className={inputClass} value={thesis.venue} onChange={(e) => updateThesis(thesis.id, { venue: e.target.value })} />
               </Field>
@@ -545,6 +575,65 @@ export function ThesisDesk() {
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+const callLabel: Record<Decision["action"], string> = {
+  observe: "Chỉ quan sát",
+  pass: "Bỏ qua",
+  paper: "Ghi trên giấy",
+  hold: "Giữ luận điểm",
+  kill: "Hủy luận điểm",
+};
+
+const resultLabel: Record<Decision["outcome"], string> = {
+  pending: "Chưa có kết quả",
+  "": "Chưa có kết quả",
+  "process-good-outcome-good": "Cách làm đủ, kết quả tốt — chưa chứng minh cách làm luôn đúng",
+  "process-good-outcome-bad": "Cách làm đủ, kết quả xấu",
+  "process-bad-outcome-good": "Cách làm thiếu, kết quả tốt — có thể là may",
+  "process-bad-outcome-bad": "Cách làm thiếu, kết quả xấu",
+};
+
+function PriorCalls({
+  security,
+  seen,
+  decisions,
+  onSeen,
+}: {
+  security: string;
+  seen: string[];
+  decisions: Decision[];
+  onSeen: (ids: string[]) => void;
+}) {
+  const prior = priorDecisions(security, decisions);
+  if (security.trim().length < 2) return null;
+  if (prior.length === 0) {
+    return <p className="text-sm text-muted">Mã này chưa có quyết định cũ. Chưa có thắng hay thua để học.</p>;
+  }
+  const seenSet = new Set(seen);
+  const unseen = prior.filter((d) => !seenSet.has(d.id));
+  return (
+    <div className="border border-line p-3">
+      <p className="text-sm">Mã này đã có quyết định. Cuộc trò chuyện mới không được kể từ đầu.</p>
+      <ul className="mt-3 space-y-2">
+        {prior.map((d) => (
+          <li key={d.id} className="border-t border-line pt-2 text-sm">
+            <p>
+              {new Date(d.at).toLocaleString("vi-VN")} · {callLabel[d.action]} · {resultLabel[d.outcome] ?? "Chưa có kết quả"}
+            </p>
+            <p className="text-muted">{d.invalidation.trim() || "Chưa ghi điều kiện hủy."}</p>
+          </li>
+        ))}
+      </ul>
+      {unseen.length > 0 ? (
+        <button type="button" className="mt-3 border border-accent px-4 py-3 text-sm" onClick={() => onSeen(prior.map((d) => d.id))}>
+          Tôi đã đọc các quyết định cũ của mã này
+        </button>
+      ) : (
+        <p className="mt-3 text-sm text-muted">Đã đọc đủ các dòng hiện có. Có quyết định mới thì phải đọc lại.</p>
+      )}
     </div>
   );
 }

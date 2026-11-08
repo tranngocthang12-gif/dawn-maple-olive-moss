@@ -10,8 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BaseratesRouteImport } from './routes/baserates'
 import { Route as CasesRouteImport } from './routes/cases'
 import { Route as CharterRouteImport } from './routes/charter'
+import { Route as CompaniesRouteImport } from './routes/companies'
 import { Route as EvidenceRouteImport } from './routes/evidence'
 import { Route as GatesRouteImport } from './routes/gates'
 import { Route as JournalRouteImport } from './routes/journal'
@@ -22,10 +24,16 @@ import { Route as ProbabilityRouteImport } from './routes/probability'
 import { Route as ProtocolRouteImport } from './routes/protocol'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SignalsRouteImport } from './routes/signals'
+import { Route as WorldRouteImport } from './routes/world'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BaseratesRoute = BaseratesRouteImport.update({
+  id: '/baserates',
+  path: '/baserates',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CasesRoute = CasesRouteImport.update({
@@ -36,6 +44,11 @@ const CasesRoute = CasesRouteImport.update({
 const CharterRoute = CharterRouteImport.update({
   id: '/charter',
   path: '/charter',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompaniesRoute = CompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EvidenceRoute = EvidenceRouteImport.update({
@@ -88,11 +101,18 @@ const SignalsRoute = SignalsRouteImport.update({
   path: '/signals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorldRoute = WorldRouteImport.update({
+  id: '/world',
+  path: '/world',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/baserates': typeof BaseratesRoute
   '/cases': typeof CasesRoute
   '/charter': typeof CharterRoute
+  '/companies': typeof CompaniesRoute
   '/evidence': typeof EvidenceRoute
   '/gates': typeof GatesRoute
   '/journal': typeof JournalRoute
@@ -103,11 +123,14 @@ export interface FileRoutesByFullPath {
   '/protocol': typeof ProtocolRoute
   '/review': typeof ReviewRoute
   '/signals': typeof SignalsRoute
+  '/world': typeof WorldRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/baserates': typeof BaseratesRoute
   '/cases': typeof CasesRoute
   '/charter': typeof CharterRoute
+  '/companies': typeof CompaniesRoute
   '/evidence': typeof EvidenceRoute
   '/gates': typeof GatesRoute
   '/journal': typeof JournalRoute
@@ -118,12 +141,15 @@ export interface FileRoutesByTo {
   '/protocol': typeof ProtocolRoute
   '/review': typeof ReviewRoute
   '/signals': typeof SignalsRoute
+  '/world': typeof WorldRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/baserates': typeof BaseratesRoute
   '/cases': typeof CasesRoute
   '/charter': typeof CharterRoute
+  '/companies': typeof CompaniesRoute
   '/evidence': typeof EvidenceRoute
   '/gates': typeof GatesRoute
   '/journal': typeof JournalRoute
@@ -134,13 +160,16 @@ export interface FileRoutesById {
   '/protocol': typeof ProtocolRoute
   '/review': typeof ReviewRoute
   '/signals': typeof SignalsRoute
+  '/world': typeof WorldRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/baserates'
     | '/cases'
     | '/charter'
+    | '/companies'
     | '/evidence'
     | '/gates'
     | '/journal'
@@ -151,11 +180,14 @@ export interface FileRouteTypes {
     | '/protocol'
     | '/review'
     | '/signals'
+    | '/world'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/baserates'
     | '/cases'
     | '/charter'
+    | '/companies'
     | '/evidence'
     | '/gates'
     | '/journal'
@@ -166,11 +198,14 @@ export interface FileRouteTypes {
     | '/protocol'
     | '/review'
     | '/signals'
+    | '/world'
   id:
     | '__root__'
     | '/'
+    | '/baserates'
     | '/cases'
     | '/charter'
+    | '/companies'
     | '/evidence'
     | '/gates'
     | '/journal'
@@ -181,12 +216,15 @@ export interface FileRouteTypes {
     | '/protocol'
     | '/review'
     | '/signals'
+    | '/world'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BaseratesRoute: typeof BaseratesRoute
   CasesRoute: typeof CasesRoute
   CharterRoute: typeof CharterRoute
+  CompaniesRoute: typeof CompaniesRoute
   EvidenceRoute: typeof EvidenceRoute
   GatesRoute: typeof GatesRoute
   JournalRoute: typeof JournalRoute
@@ -197,6 +235,7 @@ export interface RootRouteChildren {
   ProtocolRoute: typeof ProtocolRoute
   ReviewRoute: typeof ReviewRoute
   SignalsRoute: typeof SignalsRoute
+  WorldRoute: typeof WorldRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -206,6 +245,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/baserates': {
+      id: '/baserates'
+      path: '/baserates'
+      fullPath: '/baserates'
+      preLoaderRoute: typeof BaseratesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cases': {
@@ -220,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: '/charter'
       fullPath: '/charter'
       preLoaderRoute: typeof CharterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/companies': {
+      id: '/companies'
+      path: '/companies'
+      fullPath: '/companies'
+      preLoaderRoute: typeof CompaniesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/evidence': {
@@ -292,13 +345,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/world': {
+      id: '/world'
+      path: '/world'
+      fullPath: '/world'
+      preLoaderRoute: typeof WorldRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BaseratesRoute: BaseratesRoute,
   CasesRoute: CasesRoute,
   CharterRoute: CharterRoute,
+  CompaniesRoute: CompaniesRoute,
   EvidenceRoute: EvidenceRoute,
   GatesRoute: GatesRoute,
   JournalRoute: JournalRoute,
@@ -309,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProtocolRoute: ProtocolRoute,
   ReviewRoute: ReviewRoute,
   SignalsRoute: SignalsRoute,
+  WorldRoute: WorldRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

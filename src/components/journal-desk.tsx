@@ -184,7 +184,20 @@ export function JournalDesk() {
                 {d.override ? <Row k="Lý do ghi đè" v={d.overrideReason} /> : null}
                 {d.voided ? <Row k="Lý do void" v={d.voidReason} /> : null}
               </dl>
-              <p className="mt-3 text-xs text-muted">{d.thesisSnapshot ? "Có bản chụp thesis tại lúc ghi. Sửa thesis sau này không viết lại bản này." : "Không có bản chụp thesis."}</p>
+              <p className="mt-3 text-xs text-muted">{d.thesisSnapshot ? "Có bản chụp luận điểm tại lúc ghi. Sửa luận điểm sau này không viết lại bản này." : "Không có bản chụp luận điểm."}</p>
+              {d.companySeal ? (
+                <details className="mt-3 border-t border-line pt-3">
+                  <summary className="cursor-pointer text-sm">
+                    {d.companySeal.sealed
+                      ? `Hồ sơ doanh nghiệp đã đóng ngày ${new Date(d.companySeal.filedAt).toLocaleString("vi-VN")}: ${d.companySeal.name || "Chưa đặt tên"}`
+                      : `Lúc ghi, hồ sơ doanh nghiệp còn là nháp: ${d.companySeal.name || "Chưa đặt tên"}`}
+                  </summary>
+                  <p className="mt-2 text-sm leading-relaxed">{d.companySeal.business}</p>
+                  <p className="mt-1 text-xs text-muted">{d.companySeal.facts.length} sự kiện trong bản này. Sửa hồ sơ sau không đổi đoạn chữ này.</p>
+                </details>
+              ) : (
+                <p className="mt-3 text-xs text-muted">Quyết định này không gắn bản hồ sơ doanh nghiệp.</p>
+              )}
               <ul className="mt-3 space-y-1">
                 {score.parts.map((p) => (
                   <li key={p.label} className="text-xs text-muted">

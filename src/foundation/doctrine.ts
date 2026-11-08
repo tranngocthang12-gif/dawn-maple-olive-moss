@@ -78,8 +78,8 @@ export const phases: {
   {
     id: "p2",
     name: "Phase 2 — Doanh nghiệp",
-    intent: "Engine phân tích công ty. Chưa mở.",
-    state: "closed",
+    intent: "Hồ sơ do Owner nộp. Không có engine tự điền báo cáo. Định giá vẫn đóng.",
+    state: "open",
     acceptance: [
       "Mọi số có dòng dõi.",
       "Chất lượng lợi nhuận kiểm tra phải thu, tồn kho, dồn tích, vốn hóa, bên liên quan, pha loãng, nghĩa vụ ngoài bảng.",
@@ -107,8 +107,8 @@ export const phases: {
   {
     id: "p5",
     name: "Phase 5 — Tín hiệu yếu",
-    intent: "Dữ liệu thay thế và alpha ẩn. Chưa mở.",
-    state: "closed",
+    intent: "Sổ giả thuyết trước khi đo. Không backtest, không điểm số, không lệnh.",
+    state: "open",
     acceptance: [
       "Trước backtest phải có giả thuyết, cơ chế, độ trễ kỳ vọng và cách chết.",
       "Cổng dữ liệu: công khai, có giấy phép, hoặc cấm. Cờ thông tin nội gián.",

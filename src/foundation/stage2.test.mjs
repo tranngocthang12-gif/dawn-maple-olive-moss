@@ -880,3 +880,117 @@ test("R2-F-04-l: reversed concurrent CAS permits only tab B to commit", async ()
   assert.equal(db.data.get(DESK_KEY), b);
   assert.equal(db.writes(), 1);
 });
+
+
+/**
+ * R2-F-04-m: real Chromium, not a mocked transaction scheduler.
+ * Two tabs share one origin and IndexedDB database but open separate native
+ * IDBDatabase connections. The application CAS function is served by Vite.
+ * Opt in via CHINAM_REAL_BROWSER_TEST=1; CI runs it as a dedicated step.
+ */
+test("R2-F-04-m: native Chromium two-tab CAS allows exactly one winner", {
+  skip: process.env.CHINAM_REAL_BROWSER_TEST !== "1", timeout: 90_000,
+}, async () => {
+  const [{ chromium }, { createServer }] = await Promise.all([
+    import("playwright"), import("vite"),
+  ]);
+  const server = await createServer({
+    configFile: false,
+    server: { host: "127.0.0.1", port: 0, strictPort: true },
+    plugins: [{
+      name: "chinam-f04-standalone-fixture",
+      configureServer(vite) {
+        vite.middlewares.use((req, res, next) => {
+          if (req.url?.split("?")[0] !== "/__chinam_f04.html") return next();
+          res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+          res.end("<!doctype html><html><head><title>F-04 native CAS</title></head><body>isolated IndexedDB test origin</body></html>");
+        });
+      },
+    }],
+  });
+  let browser;
+  try {
+    await server.listen();
+    const address = server.httpServer.address();
+    assert.ok(address && typeof address === "object");
+    const origin = "http://127.0.0.1:" + address.port;
+    // GitHub's ubuntu-latest runner has Google Chrome installed; no dependency
+    // or fixture data is added to the project for this browser integration.
+    browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--no-sandbox"] });
+    const context = await browser.newContext();
+    const tabA = await context.newPage();
+    const tabB = await context.newPage();
+    await Promise.all([
+      tabA.goto(origin + "/__chinam_f04.html"),
+      tabB.goto(origin + "/__chinam_f04.html"),
+    ]);
+    const connect = (page) => page.evaluate(async () => {
+      const module = await import("/src/foundation/storage.ts");
+      globalThis.__chinamF04CAS = module.idbCompareAndSwap;
+      globalThis.__chinamF04DB = await new Promise((resolve, reject) => {
+        const request = globalThis.indexedDB.open("chinam", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("desk")) {
+            request.result.createObjectStore("desk");
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => reject(new Error("IndexedDB open blocked"));
+      });
+    });
+    // Each page independently imports the production module and opens its own
+    // native DB connection; both connections point to the same persistent store.
+    await connect(tabA);
+    await connect(tabB);
+
+    const seed = JSON.stringify({ bookVersion: 7, version: 0, state: baseline() });
+    const nextA = JSON.stringify({ bookVersion: 8, version: 0,
+      state: { ...baseline(), signoff: { tabA: true } } });
+    const nextB = JSON.stringify({ bookVersion: 8, version: 0,
+      state: { ...baseline(), signoff: { tabB: true } } });
+    const putSeed = () => tabA.evaluate(({ key, raw }) => new Promise((resolve, reject) => {
+      const tx = globalThis.__chinamF04DB.transaction("desk", "readwrite");
+      tx.objectStore("desk").put(raw, key);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    }), { key: DESK_KEY, raw: seed });
+    const readBack = () => tabB.evaluate((key) => new Promise((resolve, reject) => {
+      const tx = globalThis.__chinamF04DB.transaction("desk", "readonly");
+      const request = tx.objectStore("desk").get(key);
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
+    }), DESK_KEY);
+    const cas = (page, candidate) => page.evaluate(
+      ({ key, expected, replacement }) =>
+        globalThis.__chinamF04CAS(globalThis.__chinamF04DB, key, expected, replacement),
+      { key: DESK_KEY, expected: seed, replacement: candidate },
+    );
+
+    // Both dispatch orders are tested without assuming which tab the browser
+    // schedules first. Exactly one commit must win in each real-browser race.
+    for (const order of [
+      [{ page: tabA, candidate: nextA }, { page: tabB, candidate: nextB }],
+      [{ page: tabB, candidate: nextB }, { page: tabA, candidate: nextA }],
+    ]) {
+      await putSeed();
+      const results = await Promise.all(order.map(({ page, candidate }) => cas(page, candidate)));
+      assert.equal(results.filter(Boolean).length, 1, "two browser tabs must never both commit");
+      const winner = order.find((_entry, index) => results[index]);
+      const loser = order.find((_entry, index) => !results[index]);
+      assert.equal(await readBack(), winner.candidate, "durable bytes must belong to the winner");
+      assert.equal(await cas(loser.page, loser.candidate), false, "stale retry must still lose");
+      assert.equal(await readBack(), winner.candidate, "stale retry must not overwrite the winner");
+    }
+
+    // A version jump is rejected before opening any transaction.
+    await assert.rejects(cas(tabA, JSON.stringify({
+      bookVersion: 10, version: 0, state: baseline(),
+    })), /bookVersion/u);
+  } finally {
+    await browser?.close();
+    await server.close();
+  }
+});

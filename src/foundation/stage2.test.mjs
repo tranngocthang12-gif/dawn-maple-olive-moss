@@ -1210,3 +1210,24 @@ test("stage2 followup L-03: genuine 9328168 V1 fixture imports and recovers only
     assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
   });
 });
+
+test("stage2 followup L-04: dual-quarantine failure rejects recovery and preserves exact bytes", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const broken = "original-corrupt-\u0000-unchanged";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const originalSet = local.setItem;
+  local.setItem = (key, value) => {
+    if (key.startsWith(QUARANTINE_PREFIX)) throw new Error("QuotaExceededError");
+    return originalSet(key, value);
+  };
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    indexed.setFailWrites(true);
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Không cách ly được dữ liệu gốc/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(local.getItem(LEGACY_KEY), legacyEnvelope());
+    assert.equal([...indexed.data.keys()].filter((k) => k.startsWith(QUARANTINE_PREFIX)).length, 0);
+    assert.equal([...local.map.keys()].filter((k) => k.startsWith(QUARANTINE_PREFIX)).length, 0);
+  });
+});

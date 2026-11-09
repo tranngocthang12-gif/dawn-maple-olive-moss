@@ -1155,3 +1155,21 @@ test("stage2 followup L-01: importing a valid file must report failed durable In
     assert.equal(indexed.data.get(DESK_KEY), undefined);
   });
 });
+
+test("stage2 followup L-02: blocked localStorage permits exact IndexedDB export but not unsafe recovery", async () => {
+  const broken = "indexeddb-original-\u0000-byte-exact";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  const local = { getItem() { throw new Error("SecurityError: localStorage blocked"); },
+    setItem() { throw new Error("SecurityError: localStorage blocked"); } };
+  await withBrowser(local, indexed.api, async () => {
+    const copies = await readRawRecoveryCopies();
+    assert.equal(copies.find((c) => c.source === "indexeddb:" + DESK_KEY)?.raw, broken);
+    assert.ok(copies.some((c) => c.source.includes("localStorage: KHÔNG ĐỌC ĐƯỢC — SecurityError")));
+    const quarantined = await quarantineRawRecoveryCopies();
+    assert.equal(quarantined[0].raw, broken);
+    const quarantineKey = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantineKey, "recovery still requires durable verified quarantine");
+    assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+  });
+});

@@ -25,10 +25,20 @@ export async function readRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
     // IndexedDB failure explicitly; never invent missing IndexedDB bytes.
     copies.push({ source: "indexeddb: KHÔNG ĐỌC ĐƯỢC — " + storageErrorText(error), raw: "" });
   }
-  const local = requireLocal();
-  for (const key of [LEGACY_KEY, FALLBACK_KEY]) {
-    const raw = local.getItem(key);
-    if (raw !== null) copies.push({ source: "localStorage:" + key, raw });
+  // SecurityError and disabled localStorage must not erase an independently
+  // readable IndexedDB raw copy. Include a visible diagnostic in the export.
+  try {
+    const local = requireLocal();
+    for (const key of [LEGACY_KEY, FALLBACK_KEY]) {
+      try {
+        const raw = local.getItem(key);
+        if (raw !== null) copies.push({ source: "localStorage:" + key, raw });
+      } catch (error) {
+        copies.push({ source: "localStorage: KHÔNG ĐỌC ĐƯỢC — " + storageErrorText(error), raw: "" });
+      }
+    }
+  } catch (error) {
+    copies.push({ source: "localStorage: KHÔNG ĐỌC ĐƯỢC — " + storageErrorText(error), raw: "" });
   }
   return copies;
 }

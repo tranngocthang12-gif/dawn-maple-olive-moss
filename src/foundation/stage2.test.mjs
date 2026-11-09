@@ -89,6 +89,7 @@ function fakeIndexed(initial = {}) {
   const db = {
     objectStoreNames: { contains: () => true }, createObjectStore: () => undefined,
     transaction(_store, mode) {
+      let hasPut = false;
       const tx = { oncomplete: null, onerror: null, onabort: null,
         objectStore: () => ({
           get(key) {
@@ -97,10 +98,12 @@ function fakeIndexed(initial = {}) {
               if (failReads) { req.onerror?.(); return; }
               req.result = data.get(key);
               req.onsuccess?.();
+              if (mode === "readwrite" && !hasPut) queueMicrotask(() => tx.oncomplete?.());
             });
             return req;
           },
           put(value, key) {
+            hasPut = true;
             calls.push({ key, value, mode });
             queueMicrotask(() => {
               if (failWrites) { tx.onerror?.(); return; }
@@ -641,4 +644,27 @@ test("R2-F-04-c: CAS rejects skipped version and cannot modify persisted bytes",
     JSON.stringify({ bookVersion: 5, state: baseline() })), /bookVersion/u);
   assert.equal(indexed.data.get(DESK_KEY), original);
   assert.equal(indexed.writes(), 0);
+});
+
+test("R2-F-04-d: storage refuses stale tab, locks further saves and preserves newer disk bytes", async () => {
+  const original = legacyEnvelope();
+  const local = fakeLocal();
+  const indexed = fakeIndexed({ [DESK_KEY]: original });
+  await withBrowser(local, indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), original);
+    allowWritesAfterHydration();
+    const newer = JSON.stringify({ ...JSON.parse(original), bookVersion: 1 });
+    indexed.data.set(DESK_KEY, newer); // independent tab has committed newer bytes
+    const before = indexed.calls.length;
+    await durableStorage.setItem(DESK_KEY, original);
+    assert.equal(storageSnapshot().conflict, true);
+    assert.equal(storageSnapshot().ready, false);
+    assert.equal(storageSnapshot().saveError, true);
+    assert.equal(indexed.data.get(DESK_KEY), newer);
+    assert.equal(indexed.calls.length, before);
+    await durableStorage.setItem(DESK_KEY, original);
+    assert.equal(indexed.calls.length, before);
+    const memoryCopy = await useDesk.getState().exportDesk();
+    assert.equal(JSON.parse(memoryCopy).schemaVersion, 2);
+  });
 });

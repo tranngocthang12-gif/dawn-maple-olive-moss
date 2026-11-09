@@ -313,6 +313,7 @@ export const falseConfidence: Finding[] = [
 export const proposals: {
   id: string;
   title: string;
+  status: string;
   proposal: string;
   why: string;
   counter: string;
@@ -321,7 +322,8 @@ export const proposals: {
 }[] = [
   {
     id: "P1",
-    title: "Khóa ủy thác hai vành — Đã dựng, chờ Owner duyệt",
+    title: "Khóa ủy thác hai vành",
+    status: "Đã dựng, chờ Owner duyệt",
     proposal: "Vành trong: những gì được phép đưa vào nhật ký như ý định vốn, sau này. Vành ngoài: thực thể nước ngoài và biến vĩ mô chỉ để theo dõi cơ chế, không phải ứng viên vốn cho đến khi có nguồn và quy tắc riêng.",
     why: "Thiếu ủy thác là lỗ hổng g1 và g2. Không khóa thì mọi module sẽ phình.",
     counter: "Khóa sớm có thể làm mù các doanh nghiệp trong nước sống nhờ cầu và lãi suất bên ngoài.",
@@ -331,6 +333,7 @@ export const proposals: {
   {
     id: "P2",
     title: "Một WorldState, nhiều người đọc",
+    status: "Chờ Owner",
     proposal: "Gộp quyền ghi của thế giới, vĩ mô và regime thành một bản ghi có phiên bản. Các module khác được chất vấn, không được viết đè.",
     why: "Trùng d1. Ba sự thật về cùng một đường cong lãi suất sẽ không ai phát hiện.",
     counter: "Tách nhóm bắt được lỗi khác nhau. Một bản ghi có thể thành một điểm mù.",
@@ -340,6 +343,7 @@ export const proposals: {
   {
     id: "P3",
     title: "Một sổ tín hiệu cho mọi họ cảm biến",
+    status: "Chờ Owner",
     proposal: "Giữ đủ mười họ trong hiến chương, nhưng không xây mười engine. Tín hiệu chưa đăng ký giả thuyết thì không được chạm xác suất.",
     why: "Trùng d3 và rủi ro phình phạm vi.",
     counter: "Một sổ dễ thành ngăn kéo hỗn độn.",
@@ -348,7 +352,8 @@ export const proposals: {
   },
   {
     id: "P4",
-    title: "Sổ xác suất thay cho xác suất trong văn — Đã dựng, chờ Owner duyệt",
+    title: "Sổ xác suất thay cho xác suất trong văn",
+    status: "Đã dựng, chờ Owner duyệt",
     proposal: "Mọi đổi xác suất là một dòng: tiên nghiệm, mã bằng chứng, tỷ số hợp lý hoặc chưa biết, hậu nghiệm, người ghi, thời điểm. Không số nếu không có dòng.",
     why: "Chống ảo giác h4 và trùng d4. Đây là cách đọc thẳng mục xác suất và mục trí nhớ của hiến chương.",
     counter: "Chậm. Có thể làm người dùng ngại cập nhật.",
@@ -358,6 +363,7 @@ export const proposals: {
   {
     id: "P5",
     title: "Phản biện viết độc lập trước",
+    status: "Chờ Owner",
     proposal: "Phe bán và pháp y không nhận bản kết luận của phe mua cho đến khi có bản riêng. Người phán xử thấy bất đồng trước khi thấy tên vai. Ghi rõ cùng một họ mô hình không phải năm chuyên gia.",
     why: "Rủi ro r3 và r4. Năm mặt nạ tạo tự tin giả đúng chỗ hiến chương muốn sự khiêm nhường.",
     counter: "Tranh luận tuần tự đôi khi đào sâu hơn viết bịt mắt.",
@@ -366,7 +372,8 @@ export const proposals: {
   },
   {
     id: "P6",
-    title: "Điểm quy trình, không thay kết quả — Đã dựng, chờ Owner duyệt",
+    title: "Điểm quy trình, không thay kết quả",
+    status: "Đã dựng, chờ Owner duyệt",
     proposal: "Chấm hồ sơ lúc quyết định: dòng dõi, bằng chứng trái, tiêu chí hủy, base rate, trần kích thước. Không gọi điểm này là alpha.",
     why: "Vòng phản hồi của cổ phiếu quá chậm so với nhu cầu biết mình đang lệch, xem g7.",
     counter: "LTCM có quy trình mà vẫn gãy. Thờ quy trình là một kiểu tự tin giả khác.",
@@ -375,7 +382,8 @@ export const proposals: {
   },
   {
     id: "P7",
-    title: "Cổng quyền dữ liệu trước nghiên cứu — Đã dựng, chờ Owner duyệt",
+    title: "Cổng quyền dữ liệu trước nghiên cứu",
+    status: "Đã dựng, chờ Owner duyệt",
     proposal: "Tín hiệu và claim không mang nhãn sự thật hoặc dữ liệu nếu chưa có nhãn công khai, có phép, hoặc cấm, và chưa khai không phải thông tin nội gián.",
     why: "Rủi ro r6. Hiến chương đã nói dữ liệu phải hợp pháp. Cổng này khiến câu đó không còn là khẩu hiệu.",
     counter: "Có thể chặn các nguồn xám mà một quỹ khác sẵn sàng dùng.",
@@ -385,6 +393,7 @@ export const proposals: {
   {
     id: "P8",
     title: "Bất đồng định giá là đầu ra",
+    status: "Chờ Owner",
     proposal: "Ensemble báo trung vị và khoảng giữa các mô hình. Khoảng rộng thì trần độ tin cậy là MEDIUM dù câu chuyện hay.",
     why: "Overfitting o4 và nguyên tắc không một mô hình.",
     counter: "DCF gần như luôn rộng. Trần này có thể khóa HIGH gần như mọi hồ sơ.",
@@ -393,7 +402,8 @@ export const proposals: {
   },
   {
     id: "P9",
-    title: "Bỏ hạn ngạch số của phễu tín hiệu — Đã dựng, chờ Owner duyệt",
+    title: "Bỏ hạn ngạch số của phễu tín hiệu",
+    status: "Đã dựng, chờ Owner duyệt",
     proposal: "Giữ hình phễu và các cổng: cơ chế, ngoài mẫu, regime, chi phí, sức chứa. Không ghi các con số 10.000 hay 10–20 thành luật.",
     why: "Các số đó là ví dụ trong hiến chương, không phải kết quả đo. Biến ví dụ thành quota là overfitting siêu hình.",
     counter: "Không có số thì khó biết khi nào một chương trình nghiên cứu đã quá tay.",

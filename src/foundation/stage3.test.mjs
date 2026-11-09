@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 
+import { proposals } from "./review.ts";
 import { fileURLToPath } from "node:url";
 import { bayesPosterior, scenarioSum, expectedReturn, kellyReference, monteCarlo, claimIssues, companyFileIssues, signalAliveIssues, emptyQuality } from "./logic.ts";
 
@@ -97,4 +98,16 @@ test("stage3 R2 L-01: base margin zero or negative is refused before Monte Carlo
   assert.match(source.slice(zeroCheck, simulation), /Biên gốc phải lớn hơn 0%/u);
   assert.match(source.slice(zeroCheck, simulation), /return;/u);
   assert.match(source, /marginBase: baseMargin \/ 100/u);
+});
+
+test("stage3 R2 L-02: proposal badges come from review data with five built statuses", () => {
+  const built = new Set(["P1", "P4", "P6", "P7", "P9"]);
+  assert.equal(proposals.length, 9);
+  for (const p of proposals) {
+    assert.equal(p.status, built.has(p.id) ? "Đã dựng, chờ Owner duyệt" : "Chờ Owner", p.id);
+    assert.ok(!p.title.includes("Đã dựng, chờ Owner duyệt"), "title should not duplicate status");
+  }
+  const route = readFileSync(fileURLToPath(new URL("../routes/review.tsx", import.meta.url)), "utf8");
+  assert.match(route, /<Stamp>\{p\.status\}<\/Stamp>/u);
+  assert.doesNotMatch(route, /<Stamp>Chờ Owner<\/Stamp>/u);
 });

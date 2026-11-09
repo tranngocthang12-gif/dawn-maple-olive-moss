@@ -1173,3 +1173,40 @@ test("stage2 followup L-02: blocked localStorage permits exact IndexedDB export 
     assert.equal(indexed.data.get(DESK_KEY), broken);
   });
 });
+
+// Fixture produced by the exact exportDesk callback and normalizePersisted from
+// src/foundation/store.ts at 9328168, evaluated on a synthetic V1 state.
+// It contains a locked mandate, a filed company/seal, thesis and resolved decision.
+test("stage2 followup L-03: genuine 9328168 V1 fixture imports and recovers only after Owner consent", async () => {
+  const path = fileURLToPath(new URL("./fixtures/v1-export-9328168.json", import.meta.url));
+  const raw = readFileSync(path, "utf8");
+  const v1 = JSON.parse(raw);
+  assert.ok(v1.mandate.locked, "V1 fixture must contain locked mandate");
+  assert.ok(v1.companies.some((company) => company.status === "filed"));
+  assert.ok(v1.theses.length > 0);
+  assert.ok(v1.decisions.some((d) => d.outcome !== "pending" && d.thesisSnapshot));
+  const before = snapshot();
+  const refused = await useDesk.getState().importDesk(raw);
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /legacy-unverified/u);
+  assert.equal(snapshot(), before);
+  const accepted = await useDesk.getState().importDesk(raw, true);
+  assert.equal(accepted.ok, true);
+  assert.equal(useDesk.getState().decisions[0].outcomeLog.length >= 1, true);
+  const broken = "legacy-fixture-recovery-original";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await assert.rejects(() => recoverVerifiedBackup(raw), /legacy-unverified/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    await recoverVerifiedBackup(raw, true);
+    const restored = JSON.parse(indexed.data.get(DESK_KEY)).state;
+    assert.equal(restored.sha256, await hashJson(restored));
+    assert.ok(restored.decisions.some((d) => d.outcomeLog?.length));
+    assert.ok(restored.companySeals.some((s) => s.sha256));
+    assert.match(restored.tamperImportApprovals.at(-1).note, /phục hồi từ bản cũ chưa kiểm/u);
+    const quarantineKey = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantineKey);
+    assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
+  });
+});

@@ -1,0 +1,465 @@
+{
+  "theses": [
+    {
+      "id": "v1-thesis-9328168",
+      "createdAt": "2026-11-08T10:00:00.000Z",
+      "updatedAt": "2026-11-08T10:00:00.000Z",
+      "status": "draft",
+      "security": "V1-FIXTURE-ONLY",
+      "venue": "HOSE",
+      "currency": "VND",
+      "horizon": "3 years",
+      "texts": {
+        "business": "",
+        "industry": "",
+        "position": "",
+        "management": "",
+        "financialQuality": "",
+        "balanceSheet": "",
+        "cashFlow": "",
+        "capitalAllocation": "",
+        "growth": "",
+        "risks": "",
+        "macro": "",
+        "graph": "",
+        "suppliers": "",
+        "customers": "",
+        "weakSignals": "",
+        "marketBelieves": "",
+        "difference": "",
+        "valuation": "",
+        "portfolioImpact": "",
+        "bear": "",
+        "contrary": "",
+        "missing": "",
+        "invalidation": ""
+      },
+      "claims": [],
+      "scenarios": [
+        {
+          "name": "bull",
+          "probability": null,
+          "returnPct": null,
+          "narrative": "",
+          "catalyst": "",
+          "revenue": "",
+          "margin": "",
+          "multiple": "",
+          "fairValue": "",
+          "risk": ""
+        },
+        {
+          "name": "base",
+          "probability": null,
+          "returnPct": null,
+          "narrative": "",
+          "catalyst": "",
+          "revenue": "",
+          "margin": "",
+          "multiple": "",
+          "fairValue": "",
+          "risk": ""
+        },
+        {
+          "name": "bear",
+          "probability": null,
+          "returnPct": null,
+          "narrative": "",
+          "catalyst": "",
+          "revenue": "",
+          "margin": "",
+          "multiple": "",
+          "fairValue": "",
+          "risk": ""
+        },
+        {
+          "name": "tail",
+          "probability": null,
+          "returnPct": null,
+          "narrative": "",
+          "catalyst": "",
+          "revenue": "",
+          "margin": "",
+          "multiple": "",
+          "fairValue": "",
+          "risk": ""
+        }
+      ],
+      "kills": [
+        {
+          "id": "v1-kill-1",
+          "text": "",
+          "threshold": ""
+        },
+        {
+          "id": "v1-kill-2",
+          "text": "",
+          "threshold": ""
+        },
+        {
+          "id": "v1-kill-3",
+          "text": "",
+          "threshold": ""
+        }
+      ],
+      "checks": {
+        "independentSources": 0,
+        "baseRateCited": false,
+        "contraryConsidered": false,
+        "notBecauseProse": false
+      },
+      "ownerCapitalNote": "Fixture; no capital",
+      "ring": "inner",
+      "baseRateId": "",
+      "worldIds": [],
+      "companyId": "v1-company-9328168",
+      "priorSeenIds": []
+    }
+  ],
+  "decisions": [
+    {
+      "id": "v1-decision-9328168",
+      "at": "2026-11-08T10:00:00.000Z",
+      "security": "V1-FIXTURE-ONLY",
+      "priceNote": "No actual market price",
+      "action": "observe",
+      "thesisId": "v1-thesis-9328168",
+      "thesisSnapshot": {
+        "id": "v1-thesis-9328168",
+        "createdAt": "2026-11-08T10:00:00.000Z",
+        "updatedAt": "2026-11-08T10:00:00.000Z",
+        "status": "draft",
+        "security": "V1-FIXTURE-ONLY",
+        "venue": "HOSE",
+        "currency": "VND",
+        "horizon": "3 years",
+        "texts": {
+          "business": "",
+          "industry": "",
+          "position": "",
+          "management": "",
+          "financialQuality": "",
+          "balanceSheet": "",
+          "cashFlow": "",
+          "capitalAllocation": "",
+          "growth": "",
+          "risks": "",
+          "macro": "",
+          "graph": "",
+          "suppliers": "",
+          "customers": "",
+          "weakSignals": "",
+          "marketBelieves": "",
+          "difference": "",
+          "valuation": "",
+          "portfolioImpact": "",
+          "bear": "",
+          "contrary": "",
+          "missing": "",
+          "invalidation": ""
+        },
+        "claims": [],
+        "scenarios": [
+          {
+            "name": "bull",
+            "probability": null,
+            "returnPct": null,
+            "narrative": "",
+            "catalyst": "",
+            "revenue": "",
+            "margin": "",
+            "multiple": "",
+            "fairValue": "",
+            "risk": ""
+          },
+          {
+            "name": "base",
+            "probability": null,
+            "returnPct": null,
+            "narrative": "",
+            "catalyst": "",
+            "revenue": "",
+            "margin": "",
+            "multiple": "",
+            "fairValue": "",
+            "risk": ""
+          },
+          {
+            "name": "bear",
+            "probability": null,
+            "returnPct": null,
+            "narrative": "",
+            "catalyst": "",
+            "revenue": "",
+            "margin": "",
+            "multiple": "",
+            "fairValue": "",
+            "risk": ""
+          },
+          {
+            "name": "tail",
+            "probability": null,
+            "returnPct": null,
+            "narrative": "",
+            "catalyst": "",
+            "revenue": "",
+            "margin": "",
+            "multiple": "",
+            "fairValue": "",
+            "risk": ""
+          }
+        ],
+        "kills": [
+          {
+            "id": "v1-kill-1",
+            "text": "",
+            "threshold": ""
+          },
+          {
+            "id": "v1-kill-2",
+            "text": "",
+            "threshold": ""
+          },
+          {
+            "id": "v1-kill-3",
+            "text": "",
+            "threshold": ""
+          }
+        ],
+        "checks": {
+          "independentSources": 0,
+          "baseRateCited": false,
+          "contraryConsidered": false,
+          "notBecauseProse": false
+        },
+        "ownerCapitalNote": "Fixture; no capital",
+        "ring": "inner",
+        "baseRateId": "",
+        "worldIds": [],
+        "companyId": "v1-company-9328168",
+        "priorSeenIds": []
+      },
+      "companySeal": {
+        "id": "v1-seal-9328168",
+        "companyId": "v1-company-9328168",
+        "filedAt": "2026-11-08T10:00:00.000Z",
+        "sealed": true,
+        "name": "Historical fixture company",
+        "venue": "HOSE",
+        "standard": "VAS",
+        "standardNote": "VAS basis; limited cross-standard comparability",
+        "business": "Synthetic test-only business for V1 legacy migration and outcome history",
+        "missingNote": "CHƯA ĐỦ BẰNG CHỨNG: fixture only; no real-world investment evidence",
+        "facts": [],
+        "quality": {
+          "receivables": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "inventory": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "accruals": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "capitalization": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "related": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "dilution": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "offbalance": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "auditor": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          },
+          "cfo": {
+            "state": "open",
+            "note": "",
+            "source": ""
+          }
+        }
+      },
+      "worldSnapshot": [],
+      "baseRateSnapshot": null,
+      "expectedReturn": "",
+      "probabilityNote": "",
+      "risk": "",
+      "sizeNote": "",
+      "catalyst": "",
+      "invalidation": "",
+      "alternativeView": "",
+      "outcome": "process-good-outcome-good",
+      "postMortemClass": "",
+      "postMortemNote": "Synthetic process result only",
+      "override": false,
+      "overrideReason": "",
+      "voided": false,
+      "voidReason": "",
+      "amendments": []
+    }
+  ],
+  "ledger": [],
+  "signoff": {},
+  "activeThesisId": "v1-thesis-9328168",
+  "mandate": {
+    "locked": true,
+    "lockedAt": "2026-11-08T10:00:00.000Z",
+    "currency": "VND",
+    "horizon": "3 years",
+    "universeInner": "Synthetic test-only securities, no execution",
+    "universeOuter": "",
+    "leverage": "none",
+    "leverageNote": "",
+    "taxNote": "",
+    "liquidityNote": "",
+    "amendments": []
+  },
+  "world": [],
+  "baseRates": [],
+  "companies": [
+    {
+      "id": "v1-company-9328168",
+      "createdAt": "2026-11-08T10:00:00.000Z",
+      "updatedAt": "2026-11-08T10:00:00.000Z",
+      "status": "filed",
+      "name": "Historical fixture company",
+      "venue": "HOSE",
+      "standard": "VAS",
+      "standardNote": "VAS basis; limited cross-standard comparability",
+      "business": "Synthetic test-only business for V1 legacy migration and outcome history",
+      "missingNote": "CHƯA ĐỦ BẰNG CHỨNG: fixture only; no real-world investment evidence",
+      "facts": [],
+      "quality": {
+        "receivables": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "inventory": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "accruals": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "capitalization": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "related": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "dilution": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "offbalance": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "auditor": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "cfo": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        }
+      },
+      "sealId": "v1-seal-9328168"
+    }
+  ],
+  "companySeals": [
+    {
+      "id": "v1-seal-9328168",
+      "companyId": "v1-company-9328168",
+      "filedAt": "2026-11-08T10:00:00.000Z",
+      "sealed": true,
+      "name": "Historical fixture company",
+      "venue": "HOSE",
+      "standard": "VAS",
+      "standardNote": "VAS basis; limited cross-standard comparability",
+      "business": "Synthetic test-only business for V1 legacy migration and outcome history",
+      "missingNote": "CHƯA ĐỦ BẰNG CHỨNG: fixture only; no real-world investment evidence",
+      "facts": [],
+      "quality": {
+        "receivables": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "inventory": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "accruals": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "capitalization": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "related": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "dilution": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "offbalance": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "auditor": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        },
+        "cfo": {
+          "state": "open",
+          "note": "",
+          "source": ""
+        }
+      }
+    }
+  ],
+  "signals": []
+}

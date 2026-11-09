@@ -35,6 +35,11 @@ export async function readRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
 export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
   const copies = await readRawRecoveryCopies();
   if (copies.length === 0) return copies;
+  // Require a recoverable IndexedDB source: a legacy-only copy must not
+  // authorize overwriting an unreadable active IndexedDB book.
+  if (!copies.some((copy) => copy.source === "indexeddb:" + DESK_KEY)) {
+    throw new Error("Không đọc được bản IndexedDB gốc để cách ly; từ chối phục hồi.");
+  }
   const local = requireLocal();
   const key = QUARANTINE_PREFIX + new Date().toISOString() + "-" + Math.random().toString(36).slice(2);
   const serialized = JSON.stringify(copies);

@@ -558,3 +558,16 @@ test("R2-F-03-g: failed IndexedDB recovery write retains quarantined original an
     assert.equal(storageSnapshot().ready, false);
   });
 });
+
+test("R2-F-03-h: unreadable IndexedDB cannot be bypassed by a valid legacy localStorage copy", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed({ [DESK_KEY]: "damaged-original" });
+  await withBrowser(local, indexed.api, async () => {
+    indexed.setFailReads(true);
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Không thể đọc dữ liệu thô IndexedDB/u);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(indexed.data.get(DESK_KEY), "damaged-original");
+    assert.equal([...local.map.keys()].some((key) => key.startsWith(QUARANTINE_PREFIX)), false);
+  });
+});

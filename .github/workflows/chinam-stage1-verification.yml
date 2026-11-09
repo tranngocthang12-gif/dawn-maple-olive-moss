@@ -26,7 +26,7 @@ jobs:
           CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
       - name: Vite production build smoke (no DB migration)
-        run: node scripts/with-app-env.mjs vite build
+        run: PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite build
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

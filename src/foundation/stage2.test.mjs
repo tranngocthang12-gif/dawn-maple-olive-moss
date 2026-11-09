@@ -485,7 +485,8 @@ test("R2-F-03-b: quarantine keeps damaged source bytes and never overwrites acti
     assert.deepEqual(JSON.parse(indexed.data.get(key)), copies);
     assert.equal(indexed.data.get(DESK_KEY), broken);
     assert.equal(local.getItem(LEGACY_KEY), "legacy-raw");
-    assert.equal(indexed.calls.length, 0);
+    assert.deepEqual(indexed.calls.map((call) => call.key), [key]);
+    assert.equal(indexed.calls.some((call) => call.key === DESK_KEY), false);
   });
 });
 
@@ -714,10 +715,10 @@ test("R2-F-04-f: recovery cannot overwrite bytes changed by another tab after qu
   await withBrowser(local, indexed.api, async () => {
     await assert.rejects(() => recoverVerifiedBackup(backup), /Xung đột khi phục hồi/u);
     assert.equal(indexed.data.get(DESK_KEY), newer);
-    assert.equal(indexed.calls.length, 0);
-    const key = [...local.map.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
+    const key = [...indexed.data.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
     assert.ok(key);
-    assert.equal(JSON.parse(local.getItem(key))[0].raw, damaged);
+    assert.deepEqual(indexed.calls.map((call) => call.key), [key]);
+    assert.equal(JSON.parse(indexed.data.get(key))[0].raw, damaged);
   });
 });
 test("R2-F-04-g: invalid non-string IndexedDB payload cannot be treated as missing or overwritten", async () => {
@@ -1003,7 +1004,7 @@ test("R2-F-04-m: native Chromium two-tab CAS allows exactly one winner", {
 test("R2v2-R-07: CI uses production Vite build without database migration", () => {
   const path = fileURLToPath(new URL("../../.github/workflows/chinam-stage1-verification.yml", import.meta.url));
   const yaml = readFileSync(path, "utf8");
-  assert.match(yaml, /run: node scripts\/with-app-env\.mjs vite build(?:\n|$)/u);
+  assert.match(yaml, /node scripts\/with-app-env\.mjs vite build(?:\n|$)/u);
   assert.doesNotMatch(yaml, /run: npm run build:dev/u);
   assert.doesNotMatch(yaml, /run: npm run db:migrate/u);
 });
@@ -1085,7 +1086,7 @@ test("R2v2-R-01: 9328168-style V1 backup requires explicit recovery consent and 
     assert.equal(restored.sha256, await hashJson(restored));
     const entry = restored.tamperImportApprovals.at(-1);
     assert.match(entry.note, /phục hồi từ bản cũ chưa kiểm/u);
-    assert.match(entry.at, /^\\d{4}-\\d{2}-\\d{2}T/u);
+    assert.match(entry.at, /^\d{4}-\d{2}-\d{2}T/u);
   });
 });
 

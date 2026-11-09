@@ -248,6 +248,19 @@ export function JournalDesk() {
                   onChange={(e) => patchOutcome(d.id, { outcome: d.outcome, postMortemClass: d.postMortemClass, postMortemNote: e.target.value })}
                 />
               </Field>
+              <details className="mt-3 border-t border-line pt-3">
+                <summary className="cursor-pointer text-sm">Lịch sử kết quả và hậu kiểm ({d.outcomeLog?.length ?? 0} dòng)</summary>
+                <ol className="mt-2 space-y-2 text-xs text-muted">
+                  {(d.outcomeLog ?? []).map((entry, index) => (
+                    <li key={index} className="border-l border-line pl-3">
+                      <time>{new Date(entry.at).toLocaleString("vi-VN")}</time>
+                      <div>Kết quả: {entry.outcome || "Chưa có"} · Cửa sai: {entry.postMortemClass || "Chưa phân loại"}</div>
+                      <p className="whitespace-pre-wrap">{entry.postMortemNote || "Chưa ghi chú"}</p>
+                      {entry.legacyNote ? <span>({entry.legacyNote})</span> : null}
+                    </li>
+                  ))}
+                </ol>
+              </details>
               {d.amendments.length > 0 ? (
                 <ul className="mt-3 space-y-2">
                   {d.amendments.map((a) => (

@@ -114,7 +114,7 @@ export async function ensureHashes<T extends {
     const companySeal = d.companySeal ? await sealHash(d.companySeal, origin) : null;
     const candidate: Decision = { ...d, companySeal };
     if (candidate.snapshotSha256) return candidate;
-    return { ...candidate, ...(await hashDecisionSnapshot(candidate, origin)) };
+    return { ...candidate, ...(await hashDecisionSnapshot(candidate, candidate.snapshotHashOrigin ?? origin)) };
   }));
   return { ...state, companySeals, decisions };
 }

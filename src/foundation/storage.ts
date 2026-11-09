@@ -1,4 +1,5 @@
 import { ensureHashes } from "./hash.ts";
+import type { CompanySeal, Decision } from "./types.ts";
 import { preflightBook } from "./schema.ts";
 
 export const LEGACY_KEY = "chinam-foundation-v1";
@@ -40,6 +41,10 @@ let boot: Promise<string | null> | null = null;
 let writesUnlocked = false;
 let lastWrite: Promise<void> = Promise.resolve();
 let activeMode: StorageMode = "loading";
+let hashSink: ((book: { decisions: Decision[]; companySeals: CompanySeal[] }) => void) | null = null;
+export function registerHashSink(callback: (book: { decisions: Decision[]; companySeals: CompanySeal[] }) => void) {
+  hashSink = callback;
+}
 
 function requireLocal(): Storage {
   if (typeof window === "undefined" || !window.localStorage) throw new Error("localStorage không khả dụng.");
@@ -121,6 +126,7 @@ async function initialize(): Promise<string | null> {
     const legacy = local.getItem(LEGACY_KEY);
     const raw = current ?? legacy;
     if (raw !== null) checkEnvelope(raw);
+    publish({ bytes: raw === null ? 0 : new TextEncoder().encode(raw).byteLength });
     await estimate();
     return raw;
   }
@@ -144,6 +150,7 @@ async function initialize(): Promise<string | null> {
     checkEnvelope(raw);
   }
   if (raw !== null) checkEnvelope(raw);
+  publish({ bytes: raw === null ? 0 : new TextEncoder().encode(raw).byteLength });
   await estimate();
   return raw;
 }
@@ -173,6 +180,7 @@ export const durableStorage = {
         const reread = await backend!.read(dest);
         if (reread !== prepared) throw new Error("Bản ghi đọc lại không khớp.");
         publish({ saveError: false, bytes: new TextEncoder().encode(prepared).byteLength });
+        hashSink?.(withHashes as { decisions: Decision[]; companySeals: CompanySeal[] });
       } catch {
         publish({ saveError: true });
       }

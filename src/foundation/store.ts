@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { approvalFromMismatch, migrateBook } from "./schema.ts";
 import { ensureHashes, hashJson, countIntegrity } from "./hash.ts";
-import { durableStorage, storageSnapshot, reportLoadFailure } from "./storage.ts";
+import { durableStorage, storageSnapshot, reportLoadFailure, registerHashSink } from "./storage.ts";
 import type {
   Amendment,
   BaseRate,
@@ -173,6 +173,7 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
   let seals = (p.companySeals ?? []).map((s) => ({
     ...s,
     sealed: s.sealed !== false,
+    ...(!s.sha256 ? { sha256Origin: s.sha256Origin ?? "legacy-backfill" as const } : {}),
     facts: s.facts ?? [],
     quality: { ...emptyQuality(), ...(s.quality ?? {}) },
   }));
@@ -195,7 +196,10 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
   const decisions = (p.decisions ?? []).map((d) => ({
     ...d,
     thesisSnapshot: d.thesisSnapshot ? normalizeThesis(d.thesisSnapshot as LegacyThesis) : null,
-    companySeal: d.companySeal ?? null,
+    companySeal: d.companySeal
+      ? { ...d.companySeal, ...(!d.companySeal.sha256 ? { sha256Origin: d.companySeal.sha256Origin ?? "legacy-backfill" as const } : {}) }
+      : null,
+    ...(!d.snapshotSha256 ? { snapshotHashOrigin: d.snapshotHashOrigin ?? "legacy-backfill" as const } : {}),
     worldSnapshot: d.worldSnapshot ?? [],
     baseRateSnapshot: d.baseRateSnapshot ?? null,
     amendments: d.amendments ?? [],
@@ -618,7 +622,7 @@ export const useDesk = create<DeskState>()(
         if (!validated.ok) throw new Error("Sổ không thể xuất: " + validated.field + " — " + validated.reason);
         const sha256 = await hashJson(validated.book);
         // Keep the in-memory book synchronized with its persisted hash metadata.
-        commit((s) => ({
+        commit(() => ({
           decisions: hashed.decisions,
           companySeals: hashed.companySeals,
           tamperImportApprovals: hashed.tamperImportApprovals,
@@ -685,3 +689,36 @@ export const useDesk = create<DeskState>()(
     },
   ),
 );
+/** Synchronize newly generated Web Crypto hashes into memory after verified disk writes.
+ * Never repair an existing hash, including a mismatched one.
+ */
+registerHashSink((book) => {
+  if (!storageSnapshot().ready) return;
+  const current = useDesk.getState();
+  const sealsById = new Map(book.companySeals.map((seal) => [seal.id, seal]));
+  const decisionsById = new Map(book.decisions.map((d) => [d.id, d]));
+  let changed = false;
+  const companySeals = current.companySeals.map((seal) => {
+    const persisted = sealsById.get(seal.id);
+    if (seal.sha256 || !persisted?.sha256) return seal;
+    changed = true;
+    return { ...seal, sha256: persisted.sha256, sha256Origin: persisted.sha256Origin };
+  });
+  const decisions = current.decisions.map((decision) => {
+    const persisted = decisionsById.get(decision.id);
+    if (!persisted) return decision;
+    let companySeal = decision.companySeal;
+    if (companySeal && !companySeal.sha256 && persisted.companySeal?.sha256) {
+      companySeal = { ...companySeal, sha256: persisted.companySeal.sha256,
+        sha256Origin: persisted.companySeal.sha256Origin };
+      changed = true;
+    }
+    if (!decision.snapshotSha256 && persisted.snapshotSha256) {
+      changed = true;
+      return { ...decision, companySeal, snapshotSha256: persisted.snapshotSha256,
+        snapshotHashOrigin: persisted.snapshotHashOrigin };
+    }
+    return companySeal === decision.companySeal ? decision : { ...decision, companySeal };
+  });
+  if (changed) useDesk.setState({ decisions, companySeals });
+});

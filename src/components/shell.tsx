@@ -118,7 +118,7 @@ function LockedBookPanel({ conflict }: { conflict: boolean }) {
     <section role="alert" className="border-2 border-red-700 p-5 text-red-700">
       <p className="font-bold">{conflict
         ? "XUNG ĐỘT HAI TAB: Sổ trên đĩa đã thay đổi. Tab này đã bị khóa ghi để tránh mất dữ liệu."
-        : "CHẾ ĐỘ CHỈ ĐỌC: IndexedDB không hoạt động, không thể bảo đảm ghi an toàn giữa các tab."}</p>
+        : "CHẾ ĐỘ CHỈ ĐỌC: Không bảo đảm được việc ghi hoặc xác minh dữ liệu IndexedDB. Đã khóa ghi để tránh mất dữ liệu."}</p>
       <p className="mt-2 text-sm">Hãy tải bản sao trong bộ nhớ nếu cần, kiểm tra bản lưu mới nhất trước khi mở lại. Không tự động hợp nhất dữ liệu.</p>
       <button type="button" onClick={() => { void exportUnsaved(); }} disabled={busy}
         className="mt-4 border border-red-700 px-4 py-2 text-sm">Tải bản sao trong bộ nhớ</button>

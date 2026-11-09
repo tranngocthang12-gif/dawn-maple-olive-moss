@@ -363,10 +363,25 @@ export const durableStorage = {
           publish({ ready: false, readOnly: true, saveError: true });
           return;
         }
-        const reread = await backend!.read(dest);
-        if (reread !== prepared) throw new Error("Bản ghi đọc lại không khớp.");
+        // A successful readwrite transaction is a completed commit.
+        // Another tab can win a *later* transaction before this separate
+        // verification read; in that case this tab must lock immediately.
         expectedDiskRaw = prepared;
         diskVersion = nextVersion;
+        let reread: string | null;
+        try {
+          reread = await backend!.read(dest);
+        } catch {
+          writesUnlocked = false;
+          publish({ ready: false, readOnly: true, saveError: true });
+          return;
+        }
+        if (reread !== prepared) {
+          conflictLocked = true;
+          writesUnlocked = false;
+          publish({ ready: false, conflict: true, saveError: true });
+          return;
+        }
         publish({ saveError: false, bytes: new TextEncoder().encode(prepared).byteLength });
         hashSink?.(withHashes as { decisions: Decision[]; companySeals: CompanySeal[] });
       } catch {

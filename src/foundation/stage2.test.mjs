@@ -724,3 +724,50 @@ test("R2-F-04-g: invalid non-string IndexedDB payload cannot be treated as missi
     assert.equal(indexed.calls.length, 0);
   });
 });
+
+test("R2-F-04-h: later tab wins before post-CAS readback, first tab locks instead of continuing", async () => {
+  const initial = legacyEnvelope();
+  const local = fakeLocal();
+  const indexed = fakeIndexed({ [DESK_KEY]: initial });
+  await withBrowser(local, indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), initial);
+    allowWritesAfterHydration();
+    const get = indexed.data.get.bind(indexed.data);
+    let reads = 0;
+    const newer = JSON.stringify({ ...JSON.parse(initial), bookVersion: 2 });
+    indexed.data.get = (key) => {
+      if (key === DESK_KEY && ++reads === 2) indexed.data.set(DESK_KEY, newer);
+      return get(key);
+    };
+    await durableStorage.setItem(DESK_KEY, initial);
+    assert.equal(indexed.data.get(DESK_KEY), newer);
+    assert.equal(storageSnapshot().conflict, true);
+    assert.equal(storageSnapshot().ready, false);
+    assert.equal(storageSnapshot().saveError, true);
+    const writes = indexed.calls.length;
+    await durableStorage.setItem(DESK_KEY, initial);
+    assert.equal(indexed.calls.length, writes);
+  });
+});
+test("R2-F-04-i: post-CAS readback error locks all subsequent writes, despite prior commit", async () => {
+  const initial = legacyEnvelope();
+  const local = fakeLocal();
+  const indexed = fakeIndexed({ [DESK_KEY]: initial });
+  await withBrowser(local, indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), initial);
+    allowWritesAfterHydration();
+    const get = indexed.data.get.bind(indexed.data);
+    let reads = 0;
+    indexed.data.get = (key) => {
+      if (key === DESK_KEY && ++reads === 1) indexed.setFailReads(true);
+      return get(key);
+    };
+    await durableStorage.setItem(DESK_KEY, initial);
+    assert.equal(storageSnapshot().readOnly, true);
+    assert.equal(storageSnapshot().ready, false);
+    assert.equal(storageSnapshot().saveError, true);
+    const writes = indexed.calls.length;
+    await durableStorage.setItem(DESK_KEY, initial);
+    assert.equal(indexed.calls.length, writes);
+  });
+});

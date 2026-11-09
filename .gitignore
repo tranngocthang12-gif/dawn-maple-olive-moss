@@ -3,7 +3,11 @@ node_modules/
 .github_repo
 .env
 .env.*
-.grok/
+.grok/*
+!.grok/app-env.json
+!.grok/skills/
+.grok/skills/*
+!.grok/skills/og/
 screenshots/
 artifacts/
 # .vercel/output/ retained: deployment mode not independently verified yet

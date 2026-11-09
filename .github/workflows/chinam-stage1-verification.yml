@@ -17,13 +17,6 @@ jobs:
           node-version: '22'
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Restore immutable historical fixtures for legacy tests (untracked)
-        run: |
-          git fetch --no-tags --depth=1 origin 3660d0c7f99d612c6e00f1d0c38e4817f5297139
-          git archive 3660d0c7f99d612c6e00f1d0c38e4817f5297139 .grok | tar -x
-          test -f .grok/skills/og/SKILL.md
-          test -f .grok/app-env.json
-          test -z "$(git ls-files .grok)"
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
@@ -32,11 +25,11 @@ jobs:
         env:
           CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
-      - name: Remove temporary legacy fixtures before production build
+      - name: Verify clean-checkout auth is explicitly disabled
         run: |
-          rm -rf .grok
-          test ! -e .grok
-          test -z "$(git ls-files .grok)"
+          node --input-type=module -e 'import {readAppEnv} from "./scripts/with-app-env.mjs"; const flags = readAppEnv(process.cwd()); if (flags.VITE_AUTH_ENABLED !== "false") { console.error("VITE_AUTH_ENABLED must be false in tracked app-env.json"); process.exit(1); } console.log("VITE_AUTH_ENABLED=false — tracked source config");'
+          git ls-files --error-unmatch .grok/app-env.json
+          git ls-files --error-unmatch .grok/skills/og/SKILL.md
       - name: Vite production build smoke (no DB migration)
         env:
           VITE_GROK_EXTENSIONS: '0'

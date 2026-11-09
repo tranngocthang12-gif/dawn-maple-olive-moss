@@ -3,6 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+
 import { fileURLToPath } from "node:url";
 import { bayesPosterior, scenarioSum, expectedReturn, kellyReference, monteCarlo, claimIssues, companyFileIssues, signalAliveIssues, emptyQuality } from "./logic.ts";
 
@@ -73,4 +75,15 @@ test("stage3: probability input uses percent labels, rejects 800 and blank value
   assert.match(source, /Đầu vào ngoài khoảng, kết quả không dùng được/u);
   assert.match(source, /mc\.clippedPct > 5/u);
   assert.match(source, /Kết quả phụ thuộc hoàn toàn vào phân phối tự nhập, chưa hiệu chỉnh/u);
+});
+
+test("stage3 R2 H-01: tracked clean-checkout app-env disables Grok auth and OG skill files exist", () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const flags = JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e", 'import { readAppEnv } from "./scripts/with-app-env.mjs"; console.log(JSON.stringify(readAppEnv(process.cwd())))'], { cwd: root, encoding: "utf8" }));
+  assert.equal(flags.VITE_AUTH_ENABLED, "false");
+  const tracked = execFileSync("git", ["ls-files", "--", ".grok/app-env.json", ".grok/skills/og/"], { cwd: root, encoding: "utf8" }).trim().split("\n");
+  assert.ok(tracked.includes(".grok/app-env.json"));
+  const og = tracked.filter((p) => p.startsWith(".grok/skills/og/"));
+  assert.equal(og.length, 7);
+  for (const path of tracked) assert.ok(readFileSync(new URL("../../" + path, import.meta.url)).length > 0, path);
 });

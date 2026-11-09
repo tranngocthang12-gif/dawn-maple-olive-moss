@@ -114,6 +114,18 @@ let boot: Promise<string | null> | null = null;
 let writesUnlocked = false;
 let lastWrite: Promise<void> = Promise.resolve();
 let activeMode: StorageMode = "loading";
+let expectedDiskRaw: string | null = null;
+let diskVersion = 0;
+let conflictLocked = false;
+function versionOf(raw: string | null): number {
+  if (raw === null) return 0;
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Phiên bản sổ không hợp lệ.");
+  const v = (parsed as { bookVersion?: unknown }).bookVersion;
+  if (v === undefined) return 0;
+  if (!Number.isSafeInteger(v) || (v as number) < 0) throw new Error("Phiên bản sổ không hợp lệ.");
+  return v as number;
+}
 let hashSink: ((book: { decisions: Decision[]; companySeals: CompanySeal[] }) => void) | null = null;
 export function registerHashSink(callback: (book: { decisions: Decision[]; companySeals: CompanySeal[] }) => void) {
   hashSink = callback;
@@ -235,6 +247,8 @@ async function initialize(): Promise<string | null> {
     const raw = current ?? legacy;
     if (raw !== null) checkEnvelope(raw);
     publish({ bytes: raw === null ? 0 : new TextEncoder().encode(raw).byteLength });
+    expectedDiskRaw = raw;
+    diskVersion = versionOf(raw);
     await estimate();
     return raw;
   }
@@ -267,6 +281,8 @@ async function initialize(): Promise<string | null> {
     }
   }
   if (raw !== null) checkEnvelope(raw);
+  expectedDiskRaw = raw;
+  diskVersion = versionOf(raw);
   publish({ bytes: raw === null ? 0 : new TextEncoder().encode(raw).byteLength });
   await estimate();
   return raw;
@@ -286,16 +302,35 @@ export const durableStorage = {
     return boot;
   },
   async setItem(_key: string, raw: string): Promise<void> {
-    if (!writesUnlocked || !status.ready || !backend) return; // fail closed before hydration
+    if (!writesUnlocked || !status.ready || !backend || conflictLocked) return; // fail closed before hydration/conflict
     lastWrite = lastWrite.catch(() => {}).then(async () => {
       try {
         const envelope = JSON.parse(raw) as { state: { companySeals: unknown[]; decisions: unknown[] }; version?: number };
         const withHashes = await ensureHashes(envelope.state as never, "created");
-        const prepared = JSON.stringify({ ...envelope, state: withHashes });
+        const nextVersion = diskVersion + 1;
+        if (!Number.isSafeInteger(nextVersion)) throw new Error("Phiên bản sổ vượt giới hạn an toàn.");
+        const prepared = JSON.stringify({ ...envelope, state: withHashes, bookVersion: nextVersion });
         const dest = activeMode === "fallback" ? FALLBACK_KEY : DESK_KEY;
-        await backend!.write(dest, prepared);
+        if (activeMode === "indexeddb") {
+          const db = await idbOpen();
+          try {
+            if (!await idbCompareAndSwap(db, dest, expectedDiskRaw, prepared)) {
+              conflictLocked = true;
+              publish({ saveError: true });
+              return;
+            }
+          } finally { db.close?.(); }
+        } else {
+          // localStorage cannot provide transactional CAS across tabs: refuse
+          // persistence rather than claiming a false concurrency guarantee.
+          conflictLocked = true;
+          publish({ saveError: true });
+          return;
+        }
         const reread = await backend!.read(dest);
         if (reread !== prepared) throw new Error("Bản ghi đọc lại không khớp.");
+        expectedDiskRaw = prepared;
+        diskVersion = nextVersion;
         publish({ saveError: false, bytes: new TextEncoder().encode(prepared).byteLength });
         hashSink?.(withHashes as { decisions: Decision[]; companySeals: CompanySeal[] });
       } catch {
@@ -310,6 +345,7 @@ export const durableStorage = {
   },
 };
 export function allowWritesAfterHydration(): void {
+  if (conflictLocked) return;
   writesUnlocked = true;
   publish({ ready: true, loadError: "" });
 }
@@ -319,6 +355,7 @@ export function reportLoadFailure(error: unknown): void {
 }
 export function resetStorageForTest(): void {
   backend = null; boot = null; writesUnlocked = false; activeMode = "loading";
+  expectedDiskRaw = null; diskVersion = 0; conflictLocked = false;
   lastWrite = Promise.resolve();
   publish({ ready: false, mode: "loading", loadError: "", saveError: false, bytes: 0, quota: null });
 }

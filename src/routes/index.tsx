@@ -1,8 +1,9 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Note, Stamp } from "@/components/ui";
 import { useDesk } from "@/foundation/store";
 import { thesisReadiness } from "@/foundation/logic";
+import { storageSnapshot, watchStorage } from "@/foundation/storage";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "CHỈNAM — Bàn vận hành" }] }),
@@ -18,6 +19,17 @@ function Desk() {
   const theses = useDesk((s) => s.theses);
   const ledger = useDesk((s) => s.ledger);
   const decisions = useDesk((s) => s.decisions);
+  const companySeals = useDesk((s) => s.companySeals);
+  const verifyIntegrity = useDesk((s) => s.verifyIntegrity);
+  const storage = useSyncExternalStore(watchStorage, storageSnapshot, storageSnapshot);
+  const [integrity, setIntegrity] = useState({ matched: 0, mismatched: 0, missing: 0 });
+  useEffect(() => {
+    let active = true;
+    void verifyIntegrity().then((counts) => { if (active) setIntegrity(counts); }).catch(() => {
+      if (active) setIntegrity({ matched: 0, mismatched: 0, missing: companySeals.length + decisions.length });
+    });
+    return () => { active = false; };
+  }, [verifyIntegrity, companySeals, decisions]);
   const ctx = { mandate, world, baseRates, companies, decisions };
   const readyCount = theses.filter((t) => thesisReadiness(t, ctx) === "ready").length;
   const thinReadyCount = theses.filter((t) => thesisReadiness(t, ctx) === "thin-ready").length;
@@ -47,7 +59,15 @@ function Desk() {
         <Stat k="Dòng xác suất" v={ledger.length} />
         <Stat k="Quyết định chờ kết cục" v={pending} />
         <Stat k="Đã phân giải" v={decisions.filter((d) => d.outcome.startsWith("process-")).length} />
+        <Stat k="Bản niêm phong và ảnh chụp khớp băm" v={integrity.matched} />
+        <Stat k="Mã băm không khớp" v={integrity.mismatched} />
+        <Stat k="Chưa có mã băm" v={integrity.missing} />
       </dl>
+
+      <p className="mt-4 text-sm text-muted">
+        Dung lượng sổ đang dùng: {formatBytes(storage.bytes)}.
+        {storage.quota !== null ? " Hạn mức trình duyệt ước tính: " + formatBytes(storage.quota) + "." : " Trình duyệt chưa cung cấp hạn mức."}
+      </p>
 
       <ol className="mt-8 space-y-3 text-sm">
         <li className="border-t border-line pt-3">
@@ -122,57 +142,91 @@ function Desk() {
   );
 }
 
+function formatBytes(n: number): string {
+  if (n < 1024) return n.toLocaleString("vi-VN") + " byte";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  return (n / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+function downloadBook(text: string, filename: string) {
+  const blob = new Blob([text], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+function backupFilename(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return "chinam-sao-luu-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
+    "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".json";
+}
+
 function BookCopy() {
   const exportDesk = useDesk((s) => s.exportDesk);
   const importDesk = useDesk((s) => s.importDesk);
   const [msg, setMsg] = useState("");
+  const [working, setWorking] = useState(false);
+
+  const download = async () => {
+    try {
+      const raw = await exportDesk();
+      downloadBook(raw, "chinam-so.json");
+      setMsg("Đã bắt đầu tải bản sao sổ.");
+    } catch (error) {
+      setMsg("Không xuất được sổ: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
+  const importFile = async (file: File) => {
+    if (working) return;
+    setWorking(true);
+    try {
+      if (!window.confirm("Sổ từ máy sẽ thay toàn bộ sổ đang mở. Ứng dụng sẽ tự tải bản sao lưu trước khi nhập. Tiếp tục?")) return;
+      // Backup is a required gate, not an optional UI prompt.
+      const backup = await exportDesk();
+      downloadBook(backup, backupFilename());
+      setMsg("Đã khởi động tải bản sao lưu. Đang kiểm tra file nhập.");
+      const raw = await file.text();
+      let result = await importDesk(raw, false);
+      if (!result.ok && result.reason.includes("sha256:") &&
+        window.confirm("Mã băm tổng hoặc mã băm ảnh chụp không khớp. Vẫn nhập dù file đã bị sửa?")) {
+        result = await importDesk(raw, true);
+      }
+      setMsg(result.ok ? "Đã nhập sổ sau khi sao lưu. Giữ cả hai tệp." : result.reason);
+    } catch (error) {
+      setMsg("Không thể sao lưu/nhập sổ: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setWorking(false);
+    }
+  };
 
   return (
     <section className="mb-8 border border-line px-4 py-4">
       <h2 className="font-serif text-2xl">Giữ sổ trên máy bạn</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted">
-        Sổ đang nằm trong trình duyệt này. Xóa dữ liệu duyệt web là mất. Tải về một tệp khi bạn muốn giữ. Đưa tệp vào sẽ thay sổ đang mở, không gộp.
+        Sổ chính nằm trong IndexedDB. Khóa localStorage V1 được giữ nguyên trong giai đoạn này.
+        Trước khi nhập file, ứng dụng tự tải bản sao lưu sổ hiện tại.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          className="bg-accent px-4 py-3 text-sm text-ink"
-          onClick={() => {
-            const blob = new Blob([exportDesk()], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "chinam-so.json";
-            a.click();
-            URL.revokeObjectURL(url);
-            setMsg("Đã tải sổ về máy. Giữ tệp đó.");
-          }}
-        >
-          Tải sổ về máy
-        </button>
+        <button type="button" disabled={working} className="bg-accent px-4 py-3 text-sm text-ink"
+          onClick={() => { void download(); }}>Tải sổ về máy</button>
         <label className="cursor-pointer border border-line px-4 py-3 text-sm text-fg">
           Đưa sổ từ máy vào
-          <input
-            type="file"
-            accept="application/json,.json"
-            className="sr-only"
+          <input type="file" accept="application/json,.json" className="sr-only" disabled={working}
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";
-              if (!file) return;
-              const reader = new FileReader();
-              reader.onload = () => {
-                const text = typeof reader.result === "string" ? reader.result : "";
-                if (!window.confirm("Đưa sổ này vào sẽ thay toàn bộ sổ đang mở. Nên tải bản hiện tại về máy trước.")) return;
-                const result = importDesk(text);
-                setMsg(result.ok ? "Đã đưa sổ vào. Bản này thay bản đang mở." : result.reason);
-              };
-              reader.readAsText(file);
-            }}
-          />
+              if (file) void importFile(file);
+            }} />
         </label>
       </div>
-      {msg ? <p className="mt-3 text-sm text-muted">{msg}</p> : null}
+      {msg ? <p role="status" className="mt-3 text-sm text-muted">{msg}</p> : null}
     </section>
   );
 }

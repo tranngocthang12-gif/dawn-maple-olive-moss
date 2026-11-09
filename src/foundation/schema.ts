@@ -77,6 +77,19 @@ export const bookSchema = z.strictObject({
   world: z.array(world), baseRates: z.array(baseRate), companies: z.array(company),
   companySeals: z.array(seal), signals: z.array(signal),
   tamperImportApprovals: z.array(approval), sha256: hash.optional(),
+}).superRefine((book, context) => {
+  book.decisions.forEach((row, index) => {
+    const newest = row.outcomeLog[row.outcomeLog.length - 1];
+    if (newest && (row.outcome !== newest.outcome ||
+        row.postMortemClass !== newest.postMortemClass ||
+        row.postMortemNote !== newest.postMortemNote)) {
+      context.addIssue({
+        code: "custom",
+        path: ["decisions", index, "outcomeLog"],
+        message: "Kết quả hiện hành phải khớp với dòng hậu kiểm mới nhất.",
+      });
+    }
+  });
 });
 export type BookV2 = z.infer<typeof bookSchema>;
 type JsonObj = Record<string, unknown>;

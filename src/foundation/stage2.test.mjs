@@ -372,3 +372,21 @@ test("e4) migration round-trip retains populated rows in every persisted categor
     assert.equal(local.getItem(LEGACY_KEY), raw);
   });
 });
+
+test("j2) V2 rejects a file whose current outcome contradicts the latest outcomeLog row", async () => {
+  assert.equal(useDesk.getState().addDecision({ security: "ABC", priceNote: "", action: "observe", thesisId: null,
+    expectedReturn: "", probabilityNote: "", risk: "", sizeNote: "", catalyst: "",
+    invalidation: "", alternativeView: "", override: false, overrideReason: "" }).ok, true);
+  const id = useDesk.getState().decisions[0].id;
+  useDesk.getState().patchOutcome(id, {
+    outcome: "process-good-outcome-bad", postMortemClass: "bad-model", postMortemNote: "Hậu kiểm mới",
+  });
+  const altered = JSON.parse(await useDesk.getState().exportDesk());
+  altered.decisions[0].outcome = "pending";
+  altered.sha256 = await hashJson(altered);
+  const initial = snapshot();
+  const rejected = await useDesk.getState().importDesk(JSON.stringify(altered));
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.reason, /decisions\[0\]\.outcomeLog/u);
+  assert.equal(snapshot(), initial);
+});

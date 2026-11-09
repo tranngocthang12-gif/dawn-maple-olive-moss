@@ -193,21 +193,26 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
     }
     return file;
   });
-  const decisions = (p.decisions ?? []).map((d) => ({
-    ...d,
-    thesisSnapshot: d.thesisSnapshot ? normalizeThesis(d.thesisSnapshot as LegacyThesis) : null,
-    companySeal: d.companySeal
-      ? { ...d.companySeal, ...(!d.companySeal.sha256 ? { sha256Origin: d.companySeal.sha256Origin ?? "legacy-backfill" as const } : {}) }
-      : null,
-    ...(!d.snapshotSha256 ? { snapshotHashOrigin: d.snapshotHashOrigin ?? "legacy-backfill" as const } : {}),
-    worldSnapshot: d.worldSnapshot ?? [],
-    baseRateSnapshot: d.baseRateSnapshot ?? null,
-    amendments: d.amendments ?? [],
-    outcomeLog: d.outcomeLog ?? [{
+  const decisions = (p.decisions ?? []).map((d) => {
+    const history = d.outcomeLog ?? [{
       at: d.at, outcome: d.outcome, postMortemClass: d.postMortemClass,
       postMortemNote: d.postMortemNote, legacyNote: "chuyển từ bản cũ" as const,
-    }],
-  }));
+    }];
+    const latest = history[history.length - 1];
+    return {
+      ...d,
+      ...(latest ? { outcome: latest.outcome, postMortemClass: latest.postMortemClass, postMortemNote: latest.postMortemNote } : {}),
+      thesisSnapshot: d.thesisSnapshot ? normalizeThesis(d.thesisSnapshot as LegacyThesis) : null,
+      companySeal: d.companySeal
+        ? { ...d.companySeal, ...(!d.companySeal.sha256 ? { sha256Origin: d.companySeal.sha256Origin ?? "legacy-backfill" as const } : {}) }
+        : null,
+      ...(!d.snapshotSha256 ? { snapshotHashOrigin: d.snapshotHashOrigin ?? "legacy-backfill" as const } : {}),
+      worldSnapshot: d.worldSnapshot ?? [],
+      baseRateSnapshot: d.baseRateSnapshot ?? null,
+      amendments: d.amendments ?? [],
+      outcomeLog: history,
+    };
+  });
   return {
     theses,
     decisions,

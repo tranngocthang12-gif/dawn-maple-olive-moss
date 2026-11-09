@@ -32,6 +32,11 @@ jobs:
         env:
           CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
+      - name: Remove temporary legacy fixtures before production build
+        run: |
+          rm -rf .grok
+          test ! -e .grok
+          test -z "$(git ls-files .grok)"
       - name: Vite production build smoke (no DB migration)
         env:
           VITE_GROK_EXTENSIONS: '0'

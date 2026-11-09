@@ -759,7 +759,7 @@ test("R2-F-04-i: post-CAS readback error locks all subsequent writes, despite pr
     const get = indexed.data.get.bind(indexed.data);
     let reads = 0;
     indexed.data.get = (key) => {
-      if (key === DESK_KEY && ++reads === 1) indexed.setFailReads(true);
+      if (key === DESK_KEY && ++reads === 2) indexed.setFailReads(true);
       return get(key);
     };
     await durableStorage.setItem(DESK_KEY, initial);

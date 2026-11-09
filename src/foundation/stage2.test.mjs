@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { useDesk } from "./store.ts";
+import { emptyQuality, sealFromCompany } from "./logic.ts";
 import { bookSchema, migrateBook } from "./schema.ts";
 import { canonicalJson, sha256Hex, hashJson, sealHash, verifyJsonHash } from "./hash.ts";
 import { durableStorage, LEGACY_KEY, DESK_KEY, FALLBACK_KEY, resetStorageForTest,
@@ -329,5 +330,45 @@ test("g2) malformed old localStorage cannot be copied into IndexedDB", async () 
     assert.equal(indexed.calls.length, 0);
     assert.equal(indexed.data.size, 0);
     assert.ok(local.getItem(LEGACY_KEY));
+  });
+});
+
+test("e4) migration round-trip retains populated rows in every persisted category", async () => {
+  const now = "2026-11-01T00:00:00.000Z";
+  const result = useDesk.getState().createThesis();
+  assert.equal(result.ok, true);
+  assert.equal(useDesk.getState().addDecision({ security: "ABC", priceNote: "Chỉ là fixture",
+    action: "observe", thesisId: null, expectedReturn: "", probabilityNote: "", risk: "",
+    sizeNote: "", catalyst: "", invalidation: "", alternativeView: "", override: false,
+    overrideReason: "" }).ok, true);
+  const company = { id: "co-test", createdAt: now, updatedAt: now, status: "filed",
+    name: "Doanh nghiệp kiểm thử", venue: "HOSE", standard: "VAS",
+    standardNote: "Chỉ fixture kiểm thử", business: "Hồ sơ fixture",
+    missingNote: "", facts: [], quality: emptyQuality(), sealId: "seal-test" };
+  const book = {
+    ...baseline(), theses: useDesk.getState().theses, decisions: useDesk.getState().decisions,
+    activeThesisId: result.id, signoff: { verified: true }, companies: [company],
+    companySeals: [sealFromCompany(company, now, "seal-test", true)],
+    ledger: [{ id: "led-test", at: now, statement: "Kiểm thử", priorPct: 50, lr: null,
+      posteriorPct: null, evidenceNote: "", klass: "hypothesis", corrects: "" }],
+    world: [{ id: "world-test", at: now, domain: "macro", name: "Kiểm thử", geography: "VN",
+      level: "", delta: "", acceleration: "", unit: "", source: "", tier: "none",
+      asOf: "", permitted: false, supersedes: "" }],
+    baseRates: [{ id: "rate-test", at: now, name: "Kiểm thử", event: "", rateNote: "",
+      geography: "", period: "", source: "", tier: "none", asOf: "",
+      permitted: false, caveat: "", supersedes: "" }],
+    signals: [{ id: "signal-test", at: now, updatedAt: now, family: "", hypothesis: "",
+      mechanism: "", lag: "", death: "", rights: "", rightsOk: false,
+      status: "draft", diedAt: "", deathReason: "" }],
+  };
+  const raw = JSON.stringify({ state: book, version: 0 });
+  const local = fakeLocal({ [LEGACY_KEY]: raw });
+  const indexed = fakeIndexed();
+  await withBrowser(local, indexed.api, async () => {
+    const received = await durableStorage.getItem(DESK_KEY);
+    assert.equal(received, raw);
+    const migrated = JSON.parse(indexed.data.get(DESK_KEY)).state;
+    for (const key of Object.keys(baseline())) assert.deepEqual(migrated[key], book[key], key);
+    assert.equal(local.getItem(LEGACY_KEY), raw);
   });
 });

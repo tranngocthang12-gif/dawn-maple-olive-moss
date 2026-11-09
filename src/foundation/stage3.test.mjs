@@ -111,3 +111,11 @@ test("stage3 R2 L-02: proposal badges come from review data with five built stat
   assert.match(route, /<Stamp>\{p\.status\}<\/Stamp>/u);
   assert.doesNotMatch(route, /<Stamp>Chờ Owner<\/Stamp>/u);
 });
+
+test("ops O-02: checked-in Git index excludes prebuilt .vercel/output files", () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url));
+  const tracked = execFileSync("git", ["ls-files", "--", ".vercel/output/"], { cwd: root, encoding: "utf8" }).trim();
+  assert.equal(tracked, "", "prebuilt deployment files must not be tracked by Git");
+  const ignore = readFileSync(new URL("../../.gitignore", import.meta.url), "utf8");
+  assert.ok(ignore.split("\n").includes(".vercel/output/"), "generated Vercel output must be ignored");
+});

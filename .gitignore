@@ -10,4 +10,4 @@ node_modules/
 !.grok/skills/og/
 screenshots/
 artifacts/
-# .vercel/output/ retained: deployment mode not independently verified yet
+.vercel/output/

@@ -159,6 +159,37 @@ function idbWrite(db: IDBDatabase, key: string, value: string): Promise<void> {
     } catch (error) { reject(error); }
   });
 }
+/**
+ * IndexedDB CAS primitive. Read and conditional write share ONE readwrite
+ * transaction; concurrent tabs cannot interleave between comparison and put.
+ * This is not yet wired to all persistence paths (F-04 remains open).
+ */
+export function idbCompareAndSwap(
+  db: IDBDatabase, key: string, expectedRaw: string | null, replacementRaw: string,
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    let tx: IDBTransaction;
+    let matched = false;
+    try {
+      tx = db.transaction(DB_STORE, "readwrite");
+      const store = tx.objectStore(DB_STORE);
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const current = typeof request.result === "string" ? request.result : null;
+        if (current !== expectedRaw) {
+          matched = false;
+          return;
+        }
+        matched = true;
+        store.put(replacementRaw, key);
+      };
+      request.onerror = () => reject(request.error ?? new Error("Không đọc được CAS."));
+      tx.oncomplete = () => resolve(matched);
+      tx.onerror = () => reject(tx.error ?? new Error("CAS transaction lỗi."));
+      tx.onabort = () => reject(tx.error ?? new Error("CAS transaction bị hủy."));
+    } catch (error) { reject(error); }
+  });
+}
 function checkEnvelope(raw: string): void {
   let value: unknown;
   try { value = JSON.parse(raw); }

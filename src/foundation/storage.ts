@@ -87,10 +87,12 @@ export type StorageStatus = {
   mode: StorageMode;
   loadError: string;
   saveError: boolean;
+  conflict: boolean;
+  readOnly: boolean;
   bytes: number;
   quota: number | null;
 };
-let status: StorageStatus = { ready: false, mode: "loading", loadError: "", saveError: false, bytes: 0, quota: null };
+let status: StorageStatus = { ready: false, mode: "loading", loadError: "", saveError: false, conflict: false, readOnly: false, bytes: 0, quota: null };
 const listeners = new Set<() => void>();
 export const storageSnapshot = (): StorageStatus => status;
 export function watchStorage(listener: () => void): () => void {
@@ -174,12 +176,20 @@ function idbWrite(db: IDBDatabase, key: string, value: string): Promise<void> {
 /**
  * IndexedDB CAS primitive. Read and conditional write share ONE readwrite
  * transaction; concurrent tabs cannot interleave between comparison and put.
- * This is not yet wired to all persistence paths (F-04 remains open).
+ * All standard IndexedDB writes must pass through this transaction.
  */
 export function idbCompareAndSwap(
   db: IDBDatabase, key: string, expectedRaw: string | null, replacementRaw: string,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
+    // Every accepted replacement advances the durable version by exactly one.
+    // Failed validation must never open a write transaction.
+    try {
+      if (versionOf(replacementRaw) !== versionOf(expectedRaw) + 1) {
+        reject(new Error("CAS yêu cầu bookVersion tăng đúng một bước."));
+        return;
+      }
+    } catch (error) { reject(error); return; }
     let tx: IDBTransaction;
     let matched = false;
     try {
@@ -302,8 +312,9 @@ export const durableStorage = {
     return boot;
   },
   async setItem(_key: string, raw: string): Promise<void> {
-    if (!writesUnlocked || !status.ready || !backend || conflictLocked) return; // fail closed before hydration/conflict
+    if (!writesUnlocked || !status.ready || !backend || conflictLocked) return; // fail closed
     lastWrite = lastWrite.catch(() => {}).then(async () => {
+      if (!writesUnlocked || !status.ready || conflictLocked) return; // queued write after a conflict
       try {
         const envelope = JSON.parse(raw) as { state: { companySeals: unknown[]; decisions: unknown[] }; version?: number };
         const withHashes = await ensureHashes(envelope.state as never, "created");
@@ -316,15 +327,15 @@ export const durableStorage = {
           try {
             if (!await idbCompareAndSwap(db, dest, expectedDiskRaw, prepared)) {
               conflictLocked = true;
-              publish({ saveError: true });
+              writesUnlocked = false;
+              publish({ ready: false, saveError: true, conflict: true });
               return;
             }
           } finally { db.close?.(); }
         } else {
-          // localStorage cannot provide transactional CAS across tabs: refuse
-          // persistence rather than claiming a false concurrency guarantee.
-          conflictLocked = true;
-          publish({ saveError: true });
+          // Without IndexedDB transactional CAS, writes are never safe across tabs.
+          writesUnlocked = false;
+          publish({ ready: false, readOnly: true, saveError: true });
           return;
         }
         const reread = await backend!.read(dest);
@@ -346,8 +357,13 @@ export const durableStorage = {
 };
 export function allowWritesAfterHydration(): void {
   if (conflictLocked) return;
+  if (activeMode === "fallback") {
+    writesUnlocked = false;
+    publish({ ready: false, readOnly: true, loadError: "" });
+    return;
+  }
   writesUnlocked = true;
-  publish({ ready: true, loadError: "" });
+  publish({ ready: true, readOnly: false, loadError: "" });
 }
 export function reportLoadFailure(error: unknown): void {
   writesUnlocked = false;
@@ -357,7 +373,7 @@ export function resetStorageForTest(): void {
   backend = null; boot = null; writesUnlocked = false; activeMode = "loading";
   expectedDiskRaw = null; diskVersion = 0; conflictLocked = false;
   lastWrite = Promise.resolve();
-  publish({ ready: false, mode: "loading", loadError: "", saveError: false, bytes: 0, quota: null });
+  publish({ ready: false, mode: "loading", loadError: "", saveError: false, conflict: false, readOnly: false, bytes: 0, quota: null });
 }
 export async function waitForDurableWrites(): Promise<void> {
   await lastWrite;

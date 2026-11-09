@@ -93,6 +93,40 @@ function RecoveryPanel({ error }: { error: string }) {
   );
 }
 
+function LockedBookPanel({ conflict }: { conflict: boolean }) {
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const exportUnsaved = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const raw = await useDesk.getState().exportDesk();
+      const url = URL.createObjectURL(new Blob([raw], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "chinam-ban-tab-chua-luu-" + Date.now() + ".json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setMessage("Đã bắt đầu tải bản sao trong bộ nhớ. Hãy kiểm tra tệp trước khi tải lại trang.");
+    } catch (error) {
+      setMessage("Xuất bản sao thất bại: " + (error instanceof Error ? error.message : String(error)));
+    } finally { setBusy(false); }
+  };
+  return (
+    <section role="alert" className="border-2 border-red-700 p-5 text-red-700">
+      <p className="font-bold">{conflict
+        ? "XUNG ĐỘT HAI TAB: Sổ trên đĩa đã thay đổi. Tab này đã bị khóa ghi để tránh mất dữ liệu."
+        : "CHẾ ĐỘ CHỈ ĐỌC: IndexedDB không hoạt động, không thể bảo đảm ghi an toàn giữa các tab."}</p>
+      <p className="mt-2 text-sm">Hãy tải bản sao trong bộ nhớ nếu cần, kiểm tra bản lưu mới nhất trước khi mở lại. Không tự động hợp nhất dữ liệu.</p>
+      <button type="button" onClick={() => { void exportUnsaved(); }} disabled={busy}
+        className="mt-4 border border-red-700 px-4 py-2 text-sm">Tải bản sao trong bộ nhớ</button>
+      {message ? <p role="status" className="mt-2 text-sm">{message}</p> : null}
+    </section>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const storeReady = useDesk((s) => s.ready);
@@ -136,8 +170,8 @@ export function Shell({ children }: { children: ReactNode }) {
         Không dự báo giá ngày mai. Không bịa số. Không có lệnh mua, bán, hay tỷ trọng.
       </div>
       {storage.mode === "fallback" ? (
-        <aside role="status" className="fixed left-0 right-0 top-0 z-50 border-b border-yellow-700 bg-yellow-100 px-4 py-3 text-sm text-yellow-950">
-          Đang lưu tạm bằng bộ nhớ dự phòng, dung lượng nhỏ
+        <aside role="status" className="border-b border-yellow-700 bg-yellow-100 px-4 py-3 text-sm text-yellow-950">
+          IndexedDB không khả dụng. Chế độ dự phòng chỉ đọc, không ghi sổ khi chưa có CAS.
         </aside>
       ) : null}
       {storage.saveError ? (
@@ -146,7 +180,9 @@ export function Shell({ children }: { children: ReactNode }) {
         </aside>
       ) : null}
       <main className="px-4 py-8 lg:px-8">
-        {storage.loadError
+        {storage.conflict || storage.readOnly
+          ? <LockedBookPanel conflict={storage.conflict} />
+          : storage.loadError
           ? <RecoveryPanel error={storage.loadError} />
           : !storeReady || !storage.ready
             ? <p role="status" className="py-12 text-center text-lg">Đang mở sổ…</p>

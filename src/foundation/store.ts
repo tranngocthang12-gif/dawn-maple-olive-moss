@@ -632,7 +632,7 @@ export const useDesk = create<DeskState>()(
         catch { return { matched: 0, mismatched: 0, missing: get().companySeals.length + get().decisions.length }; }
       },
       exportDesk: async () => {
-        if (typeof window !== "undefined" && !storageSnapshot().ready) throw new Error("Đang mở sổ; không thể xuất bản chưa nạp.");
+        if (typeof window !== "undefined" && !storageSnapshot().ready && !storageSnapshot().conflict && !storageSnapshot().readOnly) throw new Error("Đang mở sổ; không thể xuất bản chưa nạp.");
         const state = normalizePersisted(get());
         const hashed = await ensureHashes(state, "legacy-backfill");
         const payload = { schemaVersion: 2 as const, ...hashed };

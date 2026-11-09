@@ -87,3 +87,14 @@ test("stage3 R2 H-01: tracked clean-checkout app-env disables Grok auth and OG s
   assert.equal(og.length, 7);
   for (const path of tracked) assert.ok(readFileSync(new URL("../../" + path, import.meta.url)).length > 0, path);
 });
+
+test("stage3 R2 L-01: base margin zero or negative is refused before Monte Carlo", () => {
+  const file = fileURLToPath(new URL("../components/probability-bench.tsx", import.meta.url));
+  const source = readFileSync(file, "utf8");
+  const zeroCheck = source.indexOf("if (baseMargin <= 0)");
+  const simulation = source.indexOf("setMc(monteCarlo({");
+  assert.ok(zeroCheck !== -1 && zeroCheck < simulation, "reject 0/negative before simulation");
+  assert.match(source.slice(zeroCheck, simulation), /Biên gốc phải lớn hơn 0%/u);
+  assert.match(source.slice(zeroCheck, simulation), /return;/u);
+  assert.match(source, /marginBase: baseMargin \/ 100/u);
+});

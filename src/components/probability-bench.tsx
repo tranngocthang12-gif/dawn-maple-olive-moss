@@ -207,6 +207,10 @@ export function ProbabilityBench() {
               return;
             }
             const [earning, duration, growth, growthSd, margin, marginSd, baseMargin, pe, peSdValue, comparison, randomSeed] = nums as number[];
+            if (baseMargin <= 0) {
+              setMcError("Biên gốc phải lớn hơn 0%");
+              return;
+            }
             if (growth < -80 || growth > 200 || margin < 0 || margin > 80 || baseMargin < 0 || baseMargin > 80 ||
                 pe < 0.1 || pe > 80 || growthSd < 0 || marginSd < 0 || peSdValue < 0 ||
                 earning <= 0 || duration <= 0 || !Number.isInteger(duration) || comparison < 0 || !Number.isSafeInteger(randomSeed)) {

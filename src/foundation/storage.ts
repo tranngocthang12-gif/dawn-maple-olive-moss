@@ -1,6 +1,6 @@
 import { ensureHashes } from "./hash.ts";
 import type { CompanySeal, Decision } from "./types.ts";
-import { preflightBook } from "./schema.ts";
+import { preflightBook, migrateBook } from "./schema.ts";
 
 export const LEGACY_KEY = "chinam-foundation-v1";
 export const DESK_KEY = "chinam-foundation-v2";
@@ -99,6 +99,10 @@ function checkEnvelope(raw: string): void {
   }
   const invalid = preflightBook(envelope.state);
   if (invalid) throw new Error("Sổ đã lưu có trường không hợp lệ: " + invalid);
+  // Reject malformed legacy fields before copying even one byte to IndexedDB.
+  // Validation never mutates the original localStorage payload.
+  const checked = migrateBook(envelope.state);
+  if (!checked.ok) throw new Error("Sổ đã lưu không hợp lệ tại " + checked.field + ": " + checked.reason);
 }
 async function estimate() {
   try {

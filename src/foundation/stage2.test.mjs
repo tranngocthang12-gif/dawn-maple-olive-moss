@@ -319,3 +319,14 @@ test("k3) version2 file cannot drop nested hashes even if its total hash is reco
   assert.equal(response.ok, false);
   assert.match(response.reason, /sha256/u);
 });
+
+test("g2) malformed old localStorage cannot be copied into IndexedDB", async () => {
+  const local = fakeLocal({ [LEGACY_KEY]: JSON.stringify({ state: { theses: [{ id: "x" }] }, version: 0 }) });
+  const indexed = fakeIndexed();
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(indexed.data.size, 0);
+    assert.ok(local.getItem(LEGACY_KEY));
+  });
+});

@@ -74,22 +74,38 @@ export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> 
 
 
 /**
- * Recovery is intentionally stricter than normal import: a verified V2 backup
- * only, no unverified legacy or tamper waiver while the active book is broken.
+ * Recovery requires a verified V2 backup, or a legacy V1 backup explicitly
+ * approved by the Owner (legacy has no trustworthy file-total hash).
  * The active copy is never written before a verified quarantine exists.
  */
-export async function recoverVerifiedBackup(raw: string): Promise<void> {
+export async function recoverVerifiedBackup(raw: string, acceptLegacy = false): Promise<void> {
   if (status.ready || writesUnlocked) throw new Error("Chỉ phục hồi qua màn hình sổ lỗi.");
   let parsed: unknown;
   try { parsed = JSON.parse(raw); }
   catch { throw new Error("Backup không phải JSON hợp lệ."); }
   const migrated = migrateBook(parsed);
   if (!migrated.ok) throw new Error("Backup không hợp lệ: " + migrated.field + " — " + migrated.reason);
-  if (migrated.legacy) throw new Error("Backup V1 chưa kiểm không được phục hồi tự động.");
+  if (migrated.legacy && !acceptLegacy) {
+    throw new Error("legacy-unverified: Backup bản cũ không có mã băm, không kiểm được có bị sửa hay không — vẫn phục hồi cần Owner xác nhận riêng.");
+  }
   const book = migrated.book;
-  if (!book.sha256 || await hashJson(book) !== book.sha256) throw new Error("sha256: Backup không khớp mã băm tổng.");
+  if (!migrated.legacy && (!book.sha256 || await hashJson(book) !== book.sha256)) {
+    throw new Error("sha256: Backup không khớp mã băm tổng.");
+  }
   const integrity = await countIntegrity(book.companySeals, book.decisions);
-  if (integrity.missing || integrity.mismatched) throw new Error("sha256: Backup có bản niêm phong hoặc ảnh chụp chưa xác minh.");
+  if (integrity.mismatched || (!migrated.legacy && integrity.missing)) {
+    throw new Error("sha256: Backup có bản niêm phong hoặc ảnh chụp chưa xác minh.");
+  }
+  // The original legacy backup remains untouched; tag and hash the migrated
+  // copy only after explicit consent. Recovery history is a dated audit row.
+  const toRestore = migrated.legacy
+    ? await ensureHashes({ ...book, tamperImportApprovals: [
+        ...book.tamperImportApprovals,
+        { at: new Date().toISOString(), note: "phục hồi từ bản cũ chưa kiểm",
+          expectedHash: "", observedHash: "" },
+      ] }, "legacy-backfill")
+    : book;
+  const restored = migrated.legacy ? { ...toRestore, sha256: await hashJson(toRestore) } : toRestore;
   // Quarantine must be durable and read back successfully BEFORE any write.
   const quarantined = await quarantineRawRecoveryCopies();
   if (quarantined.length === 0) throw new Error("Không có dữ liệu gốc để cách ly; từ chối ghi phục hồi.");
@@ -102,7 +118,7 @@ export async function recoverVerifiedBackup(raw: string): Promise<void> {
   catch { /* Integrity of the old version is unknown; raw evidence is retained. */ }
   const nextVersion = previousVersion + 1;
   if (!Number.isSafeInteger(nextVersion)) throw new Error("Phiên bản phục hồi vượt giới hạn an toàn.");
-  const envelope = JSON.stringify({ state: book, version: 0, bookVersion: nextVersion });
+  const envelope = JSON.stringify({ state: restored, version: 0, bookVersion: nextVersion });
   const db = await idbOpen();
   try {
     if (!await idbReplaceIfCurrent(db, DESK_KEY, indexed.raw, envelope)) {

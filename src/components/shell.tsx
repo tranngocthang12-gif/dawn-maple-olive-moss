@@ -64,8 +64,18 @@ function RecoveryPanel({ error }: { error: string }) {
     if (busy) return;
     setBusy(true);
     try {
-      if (!window.confirm("Chỉ phục hồi bằng backup V2 có mã băm hợp lệ. Dữ liệu lỗi sẽ được cách ly trước khi ghi. Tiếp tục?")) return;
-      await recoverVerifiedBackup(await file.text());
+      const raw = await file.text();
+      let legacy = false;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        legacy = typeof parsed === "object" && parsed !== null &&
+          !Array.isArray(parsed) && (("schemaVersion" in parsed &&
+            (parsed as { schemaVersion?: unknown }).schemaVersion === 1) ||
+            !("schemaVersion" in parsed));
+      } catch { /* The recovery validator rejects malformed JSON. */ }
+      if (!window.confirm("Dữ liệu lỗi sẽ được cách ly trước khi ghi. Tiếp tục phục hồi?")) return;
+      if (legacy && !window.confirm("Backup bản cũ không có mã băm, không kiểm được có bị sửa hay không — vẫn phục hồi")) return;
+      await recoverVerifiedBackup(raw, legacy);
       setMessage("Backup đã được kiểm tra và lưu. Hãy tải lại trang để mở sổ đã phục hồi.");
     } catch (cause) {
       setMessage("Không thể phục hồi: " + (cause instanceof Error ? cause.message : String(cause)));
@@ -79,7 +89,7 @@ function RecoveryPanel({ error }: { error: string }) {
         Tải dữ liệu thô đang lưu (IndexedDB và khóa cũ)
       </button>
       <label className="ml-3 inline-block cursor-pointer border border-red-700 px-4 py-2 text-sm">
-        Phục hồi từ backup V2 đã xác minh
+        Phục hồi từ backup V2 hoặc V1 có xác nhận riêng
         <input type="file" accept="application/json,.json" disabled={busy} className="sr-only"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -87,7 +97,7 @@ function RecoveryPanel({ error }: { error: string }) {
             if (file) void restore(file);
           }} />
       </label>
-      <p className="mt-3 text-sm">Backup phải có mã băm hợp lệ. Nếu không cách ly được dữ liệu gốc, phục hồi sẽ bị từ chối.</p>
+      <p className="mt-3 text-sm">Backup V2 phải có mã băm hợp lệ. Backup V1 bắt buộc xác nhận riêng và ghi nhật ký. Nếu không cách ly được dữ liệu gốc, phục hồi sẽ bị từ chối.</p>
       {message ? <p role="status" className="mt-3 text-sm">{message}</p> : null}
     </section>
   );

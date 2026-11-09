@@ -1065,3 +1065,26 @@ test("R2v2-R-02: 3MB broken record quarantines in IndexedDB despite 1MB localSto
     assert.equal(JSON.parse(indexed.data.get(DESK_KEY)).state.sha256, JSON.parse(backup).sha256);
   });
 });
+
+test("R2v2-R-01: 9328168-style V1 backup requires explicit recovery consent and records dated audit", async () => {
+  // Commit 9328168 exported JSON.stringify(normalizePersisted(get()), null, 2):
+  // no schemaVersion and no file-total sha256.
+  const legacyBackup = JSON.stringify(baseline(), null, 2);
+  const broken = "{corrupt-old-active";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await assert.rejects(() => recoverVerifiedBackup(legacyBackup), /legacy-unverified/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    await recoverVerifiedBackup(legacyBackup, true);
+    const key = [...indexed.data.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
+    assert.ok(key);
+    assert.equal(JSON.parse(indexed.data.get(key))[0].raw, broken);
+    const restored = JSON.parse(indexed.data.get(DESK_KEY)).state;
+    assert.equal(restored.schemaVersion, 2);
+    assert.equal(restored.sha256, await hashJson(restored));
+    const entry = restored.tamperImportApprovals.at(-1);
+    assert.match(entry.note, /phục hồi từ bản cũ chưa kiểm/u);
+    assert.match(entry.at, /^\\d{4}-\\d{2}-\\d{2}T/u);
+  });
+});

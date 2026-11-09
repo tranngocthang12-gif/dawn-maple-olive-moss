@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install declared dependencies without changing the repository lockfile
-        run: npm install --ignore-scripts --package-lock=false
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
@@ -25,8 +25,31 @@ jobs:
         env:
           CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
+      - name: Verify clean-checkout auth is explicitly disabled
+        run: |
+          node --input-type=module -e 'import {readAppEnv} from "./scripts/with-app-env.mjs"; const flags = readAppEnv(process.cwd()); if (flags.VITE_AUTH_ENABLED !== "false") { console.error("VITE_AUTH_ENABLED must be false in tracked app-env.json"); process.exit(1); } console.log("VITE_AUTH_ENABLED=false — tracked source config");'
+          git ls-files --error-unmatch .grok/app-env.json
+          git ls-files --error-unmatch .grok/skills/og/SKILL.md
       - name: Vite production build smoke (no DB migration)
+        env:
+          VITE_GROK_EXTENSIONS: '0'
         run: PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite build
+      - name: Verify served production HTML excludes Grok extensions
+        env:
+          VITE_GROK_EXTENSIONS: '0'
+        run: |
+          PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite preview --host 127.0.0.1 --port 8081 > /tmp/chinam-preview.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8081/ -o /tmp/chinam-rendered.html; then break; fi
+            sleep 1
+          done
+          test -s /tmp/chinam-rendered.html || { cat /tmp/chinam-preview.log; exit 1; }
+          if grep -Fq 'grok.com/grok-app-builder/extensions.js' /tmp/chinam-rendered.html; then
+            echo "Rendered HTML still contains Grok extensions script"
+            exit 1
+          fi
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

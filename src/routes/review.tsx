@@ -71,7 +71,7 @@ function ReviewPage() {
             <article key={p.id} className="border border-line p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <Stamp tone="accent">{p.id}</Stamp>
-                <Stamp>Chờ Owner</Stamp>
+                <Stamp>{p.status}</Stamp>
               </div>
               <h3 className="mt-3 font-serif text-xl">{p.title}</h3>
               <Prop k="Đề xuất" v={p.proposal} />

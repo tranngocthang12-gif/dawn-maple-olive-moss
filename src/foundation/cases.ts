@@ -70,7 +70,7 @@ export const cases: CaseStudy[] = [
       "Đôi khi đi ngược danh mục cổ phiếu dài trong các cú sốc. Đó là giả thuyết đa dạng hóa, không phải định luật.",
     ],
     failed: [
-      "Xu hướng chảy máu lâu trong thị trường không có xu hướng. Người bỏ cuộc đúng giai đoạn đó thường bỏ ngay trước khi quy tắc còn usefulness.",
+      "Xu hướng chảy máu lâu trong thị trường không có xu hướng. Người bỏ cuộc đúng giai đoạn đó thường bỏ ngay trước khi quy tắc còn hữu ích.",
     ],
     why: [
       "Lợi thế nếu còn thì là hành vi chậm và chi phí cơ hội của người không chịu lỗ nhỏ kéo dài. Nó chết khi quá đông hoặc khi cấu trúc thị trường đổi độ trễ.",

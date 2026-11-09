@@ -22,16 +22,17 @@ export function ProbabilityBench() {
 
   const [eps, setEps] = useState("1");
   const [years, setYears] = useState("5");
-  const [gMean, setGMean] = useState("0.08");
-  const [gSd, setGSd] = useState("0.04");
-  const [mMean, setMMean] = useState("0.12");
-  const [mSd, setMSd] = useState("0.02");
-  const [mBase, setMBase] = useState("0.12");
+  const [gMean, setGMean] = useState("8");
+  const [gSd, setGSd] = useState("4");
+  const [mMean, setMMean] = useState("12");
+  const [mSd, setMSd] = useState("2");
+  const [mBase, setMBase] = useState("12");
   const [peMean, setPeMean] = useState("12");
   const [peSd, setPeSd] = useState("3");
   const [price, setPrice] = useState("15");
   const [seed, setSeed] = useState("7");
   const [mc, setMc] = useState<McResult | null>(null);
+  const [mcError, setMcError] = useState("");
 
   const priorN = Number(prior);
   const lrN = lr.trim() === "" ? null : Number(lr);
@@ -182,46 +183,55 @@ export function ProbabilityBench() {
           Đây không phải module M12. Công thức đồ chơi: lợi nhuận tương lai bằng lợi nhuận hôm nay nhân tăng trưởng, nhân tỷ lệ biên, rồi nhân hệ số cuối. Ba cú kéo là độc lập nên đuôi bị làm mỏng. Kết quả có điều kiện trên các ô bên dưới, không phải xác suất thị trường, không phải giá mục tiêu.
         </Note>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Num label="Lợi nhuận gốc" value={eps} set={setEps} />
-          <Num label="Số năm" value={years} set={setYears} />
-          <Num label="Giá để so sánh" value={price} set={setPrice} />
-          <Num label="Tăng trưởng trung bình" value={gMean} set={setGMean} />
-          <Num label="Độ lệch tăng trưởng" value={gSd} set={setGSd} />
-          <Num label="Biên trung bình" value={mMean} set={setMMean} />
-          <Num label="Độ lệch biên" value={mSd} set={setMSd} />
-          <Num label="Biên gốc" value={mBase} set={setMBase} />
-          <Num label="Hệ số trung bình" value={peMean} set={setPeMean} />
-          <Num label="Độ lệch hệ số" value={peSd} set={setPeSd} />
-          <Num label="Hạt giống" value={seed} set={setSeed} />
+          <Num label="Lợi nhuận gốc (đơn vị giá)" value={eps} set={setEps} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Số năm (năm)" value={years} set={setYears} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Giá để so sánh (cùng đơn vị)" value={price} set={setPrice} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Tăng trưởng trung bình (%)" value={gMean} set={setGMean} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Độ lệch tăng trưởng (điểm %)" value={gSd} set={setGSd} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Biên trung bình (%)" value={mMean} set={setMMean} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Độ lệch biên (điểm %)" value={mSd} set={setMSd} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Biên gốc (%)" value={mBase} set={setMBase} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Hệ số trung bình (lần)" value={peMean} set={setPeMean} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Độ lệch hệ số (lần)" value={peSd} set={setPeSd} onEdit={() => { setMc(null); setMcError(""); }} />
+          <Num label="Hạt giống (số nguyên)" value={seed} set={setSeed} onEdit={() => { setMc(null); setMcError(""); }} />
         </div>
         <button
           type="button"
           className="bg-accent px-4 py-3 text-sm text-ink"
           onClick={() => {
-            const nums = [eps, years, gMean, gSd, mMean, mSd, mBase, peMean, peSd, price, seed].map(Number);
-            if (nums.some((n) => !Number.isFinite(n))) return;
-            setMc(
-              monteCarlo({
-                eps: nums[0] ?? 0,
-                years: nums[1] ?? 1,
-                gMean: nums[2] ?? 0,
-                gSd: nums[3] ?? 0,
-                marginMean: nums[4] ?? 0,
-                marginSd: nums[5] ?? 0,
-                marginBase: nums[6] ?? 1,
-                peMean: nums[7] ?? 1,
-                peSd: nums[8] ?? 0,
-                price: nums[9] ?? 0,
-                seed: nums[10] || 1,
-                n: 3000,
-              }),
-            );
+            setMc(null);
+            const inputs = [eps, years, gMean, gSd, mMean, mSd, mBase, peMean, peSd, price, seed];
+            const nums = inputs.map((value) => value.trim() === "" ? NaN : Number(value));
+            if (nums.some((value) => !Number.isFinite(value))) {
+              setMcError("Ô nhập không phải số hoặc đang trống — không thể tính.");
+              return;
+            }
+            const [earning, duration, growth, growthSd, margin, marginSd, baseMargin, pe, peSdValue, comparison, randomSeed] = nums as number[];
+            if (baseMargin <= 0) {
+              setMcError("Biên gốc phải lớn hơn 0%");
+              return;
+            }
+            if (growth < -80 || growth > 200 || margin < 0 || margin > 80 || baseMargin < 0 || baseMargin > 80 ||
+                pe < 0.1 || pe > 80 || growthSd < 0 || marginSd < 0 || peSdValue < 0 ||
+                earning <= 0 || duration <= 0 || !Number.isInteger(duration) || comparison < 0 || !Number.isSafeInteger(randomSeed)) {
+              setMcError("Đầu vào ngoài khoảng, kết quả không dùng được");
+              return;
+            }
+            setMcError("");
+            setMc(monteCarlo({
+              eps: earning, years: duration, gMean: growth / 100, gSd: growthSd / 100,
+              marginMean: margin / 100, marginSd: marginSd / 100, marginBase: baseMargin / 100,
+              peMean: pe, peSd: peSdValue, price: comparison, seed: randomSeed || 1, n: 3000,
+            }));
           }}
         >
           Chạy 3.000 đường, có hạt giống
         </button>
+        {mcError ? <p role="alert" className="text-sm text-red-600">{mcError}</p> : null}
         {mc ? (
           <div className="border border-line p-4">
+            <p className="mb-3 text-sm text-muted">Kết quả phụ thuộc hoàn toàn vào phân phối tự nhập, chưa hiệu chỉnh</p>
+            {mc.clippedPct > 5 ? <p role="alert" className="mb-3 text-sm text-red-600">Cảnh báo: {mc.clippedPct}% đường mô phỏng bị kẹp vào giới hạn.</p> : null}
             {mc.degenerate ? <p className="mb-3 text-sm text-accent">Độ lệch bằng không. Đây là một điểm, không phải một phân phối.</p> : null}
             <dl className="grid grid-cols-2 gap-3 text-sm tabular-nums sm:grid-cols-5">
               <Stat k="P5" v={mc.p5} />
@@ -246,10 +256,10 @@ export function ProbabilityBench() {
   );
 }
 
-function Num({ label, value, set }: { label: string; value: string; set: (v: string) => void }) {
+function Num({ label, value, set, onEdit }: { label: string; value: string; set: (v: string) => void; onEdit: () => void }) {
   return (
     <Field label={label}>
-      <input className={`${inputClass} tabular-nums`} value={value} onChange={(e) => set(e.target.value)} />
+      <input className={`${inputClass} tabular-nums`} value={value} onChange={(e) => { set(e.target.value); onEdit(); }} />
     </Field>
   );
 }

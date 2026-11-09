@@ -57,6 +57,7 @@ export function JournalDesk() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [voids, setVoids] = useState<Record<string, string>>({});
   const [voidFor, setVoidFor] = useState<string | null>(null);
+  const [postMortemDrafts, setPostMortemDrafts] = useState<Record<string, string>>({});
 
   function set<K extends keyof typeof empty>(key: K, value: (typeof empty)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -245,8 +246,19 @@ export function JournalDesk() {
               <Field label="Ghi chú mổ">
                 <textarea
                   className={areaClass}
-                  value={d.postMortemNote}
-                  onChange={(e) => patchOutcome(d.id, { outcome: d.outcome, postMortemClass: d.postMortemClass, postMortemNote: e.target.value })}
+                  value={postMortemDrafts[d.id] ?? d.postMortemNote}
+                  onChange={(e) => setPostMortemDrafts((drafts) => ({ ...drafts, [d.id]: e.target.value }))}
+                  onBlur={() => {
+                    const draft = postMortemDrafts[d.id];
+                    if (draft !== undefined && draft !== d.postMortemNote) {
+                      patchOutcome(d.id, { outcome: d.outcome, postMortemClass: d.postMortemClass, postMortemNote: draft });
+                    }
+                    setPostMortemDrafts((drafts) => {
+                      const nextDrafts = { ...drafts };
+                      delete nextDrafts[d.id];
+                      return nextDrafts;
+                    });
+                  }}
                 />
               </Field>
               <details className="mt-3 border-t border-line pt-3">

@@ -9,7 +9,7 @@ import { emptyQuality, sealFromCompany } from "./logic.ts";
 import { bookSchema, migrateBook } from "./schema.ts";
 import { canonicalJson, sha256Hex, hashJson, sealHash, verifyJsonHash } from "./hash.ts";
 import { durableStorage, LEGACY_KEY, DESK_KEY, FALLBACK_KEY, resetStorageForTest,
-  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites, readRawRecoveryCopies, quarantineRawRecoveryCopies, recoverVerifiedBackup, QUARANTINE_PREFIX } from "./storage.ts";
+  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites, readRawRecoveryCopies, quarantineRawRecoveryCopies, recoverVerifiedBackup, QUARANTINE_PREFIX, idbCompareAndSwap } from "./storage.ts";
 
 const baseline = () => ({
   theses: [], decisions: [], ledger: [], signoff: {}, activeThesisId: null,
@@ -178,7 +178,9 @@ test("h) missing indexedDB uses localStorage fallback and warns", async () => {
     assert.equal(storageSnapshot().mode, "fallback");
     allowWritesAfterHydration();
     await durableStorage.setItem(DESK_KEY, raw);
-    assert.ok(local.map.has(FALLBACK_KEY));
+    assert.equal(storageSnapshot().readOnly, true);
+    assert.equal(storageSnapshot().ready, false);
+    assert.equal(local.map.has(FALLBACK_KEY), false);
     assert.equal(local.map.get(LEGACY_KEY), raw);
   });
 });
@@ -570,4 +572,73 @@ test("R2-F-03-h: unreadable IndexedDB cannot be bypassed by a valid legacy local
     assert.equal(indexed.data.get(DESK_KEY), "damaged-original");
     assert.equal([...local.map.keys()].some((key) => key.startsWith(QUARANTINE_PREFIX)), false);
   });
+});
+
+function casFakeIndexed(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  let writeCount = 0;
+  const db = {
+    close() {},
+    transaction(_store, mode) {
+      assert.equal(mode, "readwrite");
+      let pending = 0;
+      const tx = { oncomplete: null, onerror: null, onabort: null };
+      const finish = () => {
+        if (pending === 0) queueMicrotask(() => tx.oncomplete?.());
+      };
+      const store = {
+        get(key) {
+          pending++;
+          const request = { result: undefined, onsuccess: null, onerror: null };
+          queueMicrotask(() => {
+            request.result = data.get(key);
+            request.onsuccess?.();
+            pending--;
+            finish();
+          });
+          return request;
+        },
+        put(value, key) {
+          pending++;
+          queueMicrotask(() => {
+            data.set(key, value);
+            writeCount++;
+            pending--;
+            finish();
+          });
+        },
+      };
+      tx.objectStore = () => store;
+      return tx;
+    },
+  };
+  return { db, data, writes: () => writeCount };
+}
+test("R2-F-04-a: tab A commits v1 then stale tab B cannot overwrite it", async () => {
+  const original = JSON.stringify({ bookVersion: 0, state: baseline() });
+  const indexed = casFakeIndexed({ [DESK_KEY]: original });
+  const a = JSON.stringify({ bookVersion: 1, state: { ...baseline(), signoff: { a: true } } });
+  const b = JSON.stringify({ bookVersion: 1, state: { ...baseline(), signoff: { b: true } } });
+  assert.equal(await idbCompareAndSwap(indexed.db, DESK_KEY, original, a), true);
+  assert.equal(await idbCompareAndSwap(indexed.db, DESK_KEY, original, b), false);
+  assert.equal(indexed.data.get(DESK_KEY), a);
+  assert.equal(indexed.writes(), 1);
+});
+test("R2-F-04-b: tab B commits v1 then stale tab A cannot overwrite it", async () => {
+  const original = JSON.stringify({ bookVersion: 0, state: baseline() });
+  const indexed = casFakeIndexed({ [DESK_KEY]: original });
+  const a = JSON.stringify({ bookVersion: 1, state: { ...baseline(), signoff: { a: true } } });
+  const b = JSON.stringify({ bookVersion: 1, state: { ...baseline(), signoff: { b: true } } });
+  assert.equal(await idbCompareAndSwap(indexed.db, DESK_KEY, original, b), true);
+  assert.equal(await idbCompareAndSwap(indexed.db, DESK_KEY, original, a), false);
+  assert.equal(indexed.data.get(DESK_KEY), b);
+  assert.equal(indexed.writes(), 1);
+});
+test("R2-F-04-c: CAS rejects skipped version and cannot modify persisted bytes", async () => {
+  const original = JSON.stringify({ bookVersion: 3, state: baseline() });
+  const indexed = casFakeIndexed({ [DESK_KEY]: original });
+  await assert.rejects(() => idbCompareAndSwap(indexed.db, DESK_KEY, original,
+    JSON.stringify({ bookVersion: 5, state: baseline() })), /bookVersion/u);
+  assert.equal(indexed.data.get(DESK_KEY), original);
+  assert.equal(indexed.writes(), 0);
 });

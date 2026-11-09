@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { approvalFromMismatch, migrateBook } from "./schema.ts";
+import { ensureHashes, hashJson, countIntegrity } from "./hash.ts";
+import { durableStorage, storageSnapshot, reportLoadFailure } from "./storage.ts";
 import type {
   Amendment,
   BaseRate,
@@ -19,6 +22,7 @@ import type {
   Thesis,
   ThesisTexts,
   WorldObs,
+  TamperImportApproval,
 } from "./types.ts";
 import {
   caps,
@@ -47,6 +51,7 @@ type DeskState = {
   activeThesisId: string | null;
   ready: boolean;
   setReady: (v: boolean) => void;
+  tamperImportApprovals: TamperImportApproval[];
   createThesis: () => IdResult;
   createSuccessor: (id: string) => IdResult;
   invalidateThesis: (id: string, reason: string) => Result;
@@ -99,19 +104,14 @@ type DeskState = {
   patchSignal: (id: string, patch: Partial<Pick<Signal, "family" | "hypothesis" | "mechanism" | "lag" | "death" | "rights" | "rightsOk">>) => void;
   markSignalAlive: (id: string) => Result;
   killSignal: (id: string, reason: string) => Result;
-  exportDesk: () => string;
-  importDesk: (raw: string) => Result;
+  exportDesk: () => Promise<string>;
+  importDesk: (raw: string, acceptTamper?: boolean) => Promise<Result>;
+  verifyIntegrity: () => Promise<{ matched: number; mismatched: number; missing: number }>;
 };
 
 function touch(t: Thesis, patch: Partial<Thesis>): Thesis {
   return { ...t, ...patch, updatedAt: new Date().toISOString() };
 }
-
-const memoryStorage = {
-  getItem: () => null as string | null,
-  setItem: () => {},
-  removeItem: () => {},
-};
 
 function emptyMandate(): Mandate {
   return {
@@ -131,7 +131,7 @@ function emptyMandate(): Mandate {
 
 type Persisted = Pick<
   DeskState,
-  "theses" | "decisions" | "ledger" | "signoff" | "activeThesisId" | "mandate" | "world" | "baseRates" | "companies" | "companySeals" | "signals"
+  "theses" | "decisions" | "ledger" | "signoff" | "activeThesisId" | "mandate" | "world" | "baseRates" | "companies" | "companySeals" | "signals" | "tamperImportApprovals"
 >;
 
 type LegacyThesis = Omit<Partial<Thesis>, "status" | "checks"> & {
@@ -199,6 +199,10 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
     worldSnapshot: d.worldSnapshot ?? [],
     baseRateSnapshot: d.baseRateSnapshot ?? null,
     amendments: d.amendments ?? [],
+    outcomeLog: d.outcomeLog ?? [{
+      at: d.at, outcome: d.outcome, postMortemClass: d.postMortemClass,
+      postMortemNote: d.postMortemNote, legacyNote: "chuyển từ bản cũ" as const,
+    }],
   }));
   return {
     theses,
@@ -212,6 +216,7 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
     companies,
     companySeals: seals,
     signals: p.signals ?? [],
+    tamperImportApprovals: p.tamperImportApprovals ?? [],
   };
 }
 
@@ -286,6 +291,7 @@ export const useDesk = create<DeskState>()(
       companies: [],
       companySeals: [],
       signals: [],
+      tamperImportApprovals: [],
       ready: false,
       setReady: (v) => set({ ready: v }),
       createThesis: () => {
@@ -388,6 +394,9 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       addDecision: (input) => {
+        if (input.override && input.overrideReason.trim().length < 12) {
+          return { ok: false, reason: "Ghi đè cần lý do tối thiểu 12 ký tự, kể cả khi thesis đã hủy." };
+        }
         const thesis = input.thesisId ? get().theses.find((t) => t.id === input.thesisId) ?? null : null;
         if (input.action === "paper" || input.action === "hold" || input.action === "kill") {
           if (!thesis) return { ok: false, reason: "Hành động này cần một thesis." };
@@ -406,9 +415,6 @@ export const useDesk = create<DeskState>()(
             });
             if (blockers.length > 0 && !input.override) {
               return { ok: false, reason: `Thesis chưa sẵn sàng: ${blockers[0]}` };
-            }
-            if (input.override && input.overrideReason.trim().length < 12) {
-              return { ok: false, reason: "Ghi đè cần lý do cụ thể. Không ghi đè im lặng." };
             }
           }
         }
@@ -449,6 +455,8 @@ export const useDesk = create<DeskState>()(
           outcome: "pending",
           postMortemClass: "",
           postMortemNote: "",
+          outcomeLog: [{ at: new Date().toISOString(), outcome: "pending", postMortemClass: "", postMortemNote: "" }],
+          snapshotHashOrigin: "created",
           override: input.override,
           overrideReason: input.overrideReason,
           voided: false,
@@ -459,7 +467,12 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       patchOutcome: (id, patch) =>
-        set((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
+        set((s) => ({ decisions: s.decisions.map((d) => {
+          if (d.id !== id) return d;
+          const at = new Date().toISOString();
+          const log = { at, ...patch };
+          return { ...d, ...patch, outcomeLog: [...(d.outcomeLog ?? []), log] };
+        }) })),
       amend: (id, note) => {
         const trimmed = note.trim();
         if (trimmed.length < 8) return;
@@ -553,7 +566,7 @@ export const useDesk = create<DeskState>()(
         if (file.status === "filed") return { ok: false, reason: "Bản này đã đóng. Gõ sửa nếu bạn muốn viết bản nháp mới, rồi nộp lại." };
         if (get().companySeals.length >= caps.seals) return { ok: false, reason: fullBook };
         const filedAt = new Date().toISOString();
-        const seal = sealFromCompany({ ...file, updatedAt: filedAt }, filedAt, newId(), true);
+        const seal = { ...sealFromCompany({ ...file, updatedAt: filedAt }, filedAt, newId(), true), sha256Origin: "created" as const };
         set((s) => ({ companySeals: [seal, ...s.companySeals], companies: s.companies.map((c) => (c.id === id ? { ...c, status: "filed", sealId: seal.id, updatedAt: filedAt } : c)) }));
         return { ok: true };
       },
@@ -585,28 +598,61 @@ export const useDesk = create<DeskState>()(
         set((s) => ({ signals: s.signals.map((item) => item.id === id ? { ...item, status: "dead", diedAt: at, deathReason: reason.trim(), updatedAt: at } : item) }));
         return { ok: true };
       },
-      exportDesk: () => JSON.stringify(normalizePersisted(get()), null, 2),
-      importDesk: (raw) => {
-        let parsed: unknown;
+      verifyIntegrity: async () => {
+        try { return await countIntegrity(get().companySeals, get().decisions); }
+        catch { return { matched: 0, mismatched: 0, missing: get().companySeals.length + get().decisions.length }; }
+      },
+      exportDesk: async () => {
+        const state = normalizePersisted(get());
+        const hashed = await ensureHashes(state, "legacy-backfill");
+        const payload = { schemaVersion: 2 as const, ...hashed };
+        const validated = migrateBook(payload);
+        if (!validated.ok) throw new Error("Sổ không thể xuất: " + validated.field + " — " + validated.reason);
+        const sha256 = await hashJson(validated.book);
+        // Keep the in-memory book synchronized with its persisted hash metadata.
+        set((s) => ({
+          decisions: hashed.decisions,
+          companySeals: hashed.companySeals,
+          tamperImportApprovals: hashed.tamperImportApprovals,
+        }));
+        return JSON.stringify({ ...validated.book, sha256 }, null, 2);
+      },
+      importDesk: async (raw, acceptTamper = false) => {
         try {
-          parsed = JSON.parse(raw);
-        } catch {
-          return { ok: false, reason: "Tệp này không đọc được." };
+          let parsed: unknown;
+          try { parsed = JSON.parse(raw); }
+          catch { return { ok: false, reason: "root: Tệp không phải JSON hợp lệ." }; }
+          const result = migrateBook(parsed);
+          if (!result.ok) return { ok: false, reason: result.field + ": " + result.reason };
+          const problem = tooBig(result.book);
+          if (problem) return { ok: false, reason: problem };
+          const expected = result.book.sha256 ?? "";
+          const actual = await hashJson(result.book as Record<string, unknown>);
+          const hasMismatch = !!expected && expected !== actual;
+          if (!result.legacy && !expected) {
+            return { ok: false, reason: "sha256: File phiên bản 2 thiếu mã băm tổng." };
+          }
+          const integrity = await countIntegrity(result.book.companySeals, result.book.decisions);
+          const mismatch = integrity.mismatched > 0;
+          if ((hasMismatch || mismatch) && !acceptTamper) {
+            return { ok: false, reason: "sha256: Mã băm không khớp. File có thể đã bị sửa. Chỉ Owner được xác nhận Vẫn nhập dù file đã bị sửa." };
+          }
+          const upgraded = result.legacy ? await ensureHashes(result.book, "legacy-backfill") : result.book;
+          const approved = hasMismatch || mismatch
+            ? [...upgraded.tamperImportApprovals, approvalFromMismatch(expected, actual)]
+            : upgraded.tamperImportApprovals;
+          // Commit only after JSON parse, shape preflight, migration, full Zod,
+          // top-level hash and nested integrity checks have succeeded.
+          set(normalizePersisted({ ...upgraded, tamperImportApprovals: approved }));
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, reason: "Không thể nhập sổ: " + (error instanceof Error ? error.message : String(error)) };
         }
-        if (!parsed || typeof parsed !== "object") return { ok: false, reason: "Tệp này không phải sổ của bàn làm việc." };
-        const body = parsed as Partial<Persisted>;
-        const known = ["theses", "decisions", "ledger", "mandate", "world", "baseRates", "companies", "companySeals", "signals", "signoff"] as const;
-        if (!known.some((key) => key in body)) return { ok: false, reason: "Tệp này không phải sổ CHỈNAM." };
-        const next = normalizePersisted(body);
-        const problem = tooBig(next);
-        if (problem) return { ok: false, reason: problem };
-        set(next);
-        return { ok: true };
       },
     }),
     {
-      name: "chinam-foundation-v1",
-      storage: createJSONStorage(() => (typeof window === "undefined" ? memoryStorage : window.localStorage)),
+      name: "chinam-foundation-v2",
+      storage: createJSONStorage(() => durableStorage),
       skipHydration: true,
       partialize: (s): Persisted => ({
         theses: s.theses,
@@ -620,8 +666,12 @@ export const useDesk = create<DeskState>()(
         companies: s.companies,
         companySeals: s.companySeals,
         signals: s.signals,
+        tamperImportApprovals: s.tamperImportApprovals,
       }),
       merge: (persisted, current) => ({ ...current, ...normalizePersisted((persisted ?? {}) as Partial<Persisted>) }),
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) reportLoadFailure(error);
+      },
     },
   ),
 );

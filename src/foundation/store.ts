@@ -650,6 +650,9 @@ export const useDesk = create<DeskState>()(
           catch { return { ok: false, reason: "root: Tệp không phải JSON hợp lệ." }; }
           const result = migrateBook(parsed);
           if (!result.ok) return { ok: false, reason: result.field + ": " + result.reason };
+          if (result.legacy && !acceptTamper) {
+            return { ok: false, reason: "legacy-unverified: File bản cũ không có mã băm, không kiểm được có bị sửa hay không — cần Owner xác nhận riêng trước khi nhập." };
+          }
           const problem = tooBig(result.book);
           if (problem) return { ok: false, reason: problem };
           const expected = result.book.sha256 ?? "";
@@ -667,9 +670,14 @@ export const useDesk = create<DeskState>()(
             return { ok: false, reason: "sha256: Mã băm không khớp. File có thể đã bị sửa. Chỉ Owner được xác nhận Vẫn nhập dù file đã bị sửa." };
           }
           const upgraded = result.legacy ? await ensureHashes(result.book, "legacy-backfill") : result.book;
-          const approved = hasMismatch || mismatch
-            ? [...upgraded.tamperImportApprovals, approvalFromMismatch(expected, actual)]
-            : upgraded.tamperImportApprovals;
+          const approved = result.legacy
+            ? [...upgraded.tamperImportApprovals, {
+                at: new Date().toISOString(), note: "bản cũ chưa kiểm — Owner xác nhận nhập",
+                expectedHash: "", observedHash: "",
+              }]
+            : hasMismatch || mismatch
+              ? [...upgraded.tamperImportApprovals, approvalFromMismatch(expected, actual)]
+              : upgraded.tamperImportApprovals;
           // Commit only after JSON parse, shape preflight, migration, full Zod,
           // top-level hash and nested integrity checks have succeeded.
           commit(normalizePersisted({ ...upgraded, tamperImportApprovals: approved }));

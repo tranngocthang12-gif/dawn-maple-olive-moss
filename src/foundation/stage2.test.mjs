@@ -59,7 +59,8 @@ test("c) v1 export without schemaVersion imports by documented migration", async
   const parsed = migrateBook(current);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.legacy, true);
-  assert.equal((await useDesk.getState().importDesk(JSON.stringify(current))).ok, true);
+  assert.equal((await useDesk.getState().importDesk(JSON.stringify(current), true)).ok, true);
+  assert.match(useDesk.getState().tamperImportApprovals.at(-1).note, /bản cũ chưa kiểm/u);
 });
 test("d) a single edited character invalidates sha256 without Owner confirmation", async () => {
   const current = JSON.parse(await useDesk.getState().exportDesk());
@@ -412,4 +413,37 @@ test("R2-F02-b: export in flight cannot truncate an appended outcomeLog", async 
   });
   await exporting;
   assert.equal(useDesk.getState().decisions.find((d) => d.id === id)?.outcomeLog.length, 2);
+});
+
+test("R2-F-01-a: V2 downgraded to legacy cannot import silently or alter existing book", async () => {
+  const current = JSON.parse(await useDesk.getState().exportDesk());
+  current.mandate.currency = "TAMPERED";
+  delete current.schemaVersion;
+  delete current.sha256;
+  delete current.tamperImportApprovals;
+  for (const seal of current.companySeals) { delete seal.sha256; delete seal.sha256Origin; }
+  for (const decision of current.decisions) {
+    delete decision.snapshotSha256;
+    delete decision.snapshotHashOrigin;
+    delete decision.outcomeLog;
+    if (decision.companySeal) { delete decision.companySeal.sha256; delete decision.companySeal.sha256Origin; }
+  }
+  const before = snapshot();
+  const refused = await useDesk.getState().importDesk(JSON.stringify(current));
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /legacy-unverified/u);
+  assert.equal(snapshot(), before);
+});
+test("R2-F-01-b: explicitly approved unverified legacy import leaves dated audit entry", async () => {
+  const current = JSON.parse(await useDesk.getState().exportDesk());
+  delete current.schemaVersion;
+  delete current.sha256;
+  const before = snapshot();
+  assert.equal((await useDesk.getState().importDesk(JSON.stringify(current))).ok, false);
+  assert.equal(snapshot(), before);
+  const accepted = await useDesk.getState().importDesk(JSON.stringify(current), true);
+  assert.equal(accepted.ok, true);
+  const entry = useDesk.getState().tamperImportApprovals.at(-1);
+  assert.match(entry.note, /bản cũ chưa kiểm/u);
+  assert.match(entry.at, /^\d{4}-\d{2}-\d{2}T/u);
 });

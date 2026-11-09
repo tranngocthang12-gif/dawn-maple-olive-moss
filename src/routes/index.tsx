@@ -200,6 +200,10 @@ function BookCopy() {
       setMsg("Đã xác nhận bản sao lưu. Đang kiểm tra file nhập.");
       const raw = await file.text();
       let result = await importDesk(raw, false);
+      if (!result.ok && result.reason.startsWith("legacy-unverified:") &&
+        window.confirm("File bản cũ không có mã băm, không kiểm được có bị sửa hay không — vẫn nhập?")) {
+        result = await importDesk(raw, true);
+      }
       if (!result.ok && result.reason.includes("sha256:") &&
         window.confirm("Mã băm tổng hoặc mã băm ảnh chụp không khớp. Vẫn nhập dù file đã bị sửa?")) {
         result = await importDesk(raw, true);

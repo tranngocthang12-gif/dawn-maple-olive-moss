@@ -285,3 +285,37 @@ test("k2) nested seal mismatch is rejected despite an otherwise valid file-total
   assert.equal(rejected.ok, false);
   assert.match(rejected.reason, /sha256/u);
 });
+
+test("e2) a newer localStorage fallback wins over stale legacy only after IDB read-back", async () => {
+  const legacy = legacyEnvelope();
+  const newer = JSON.stringify({ state: { ...baseline(), signoff: { newNote: true } }, version: 0 });
+  const local = fakeLocal({ [LEGACY_KEY]: legacy, [FALLBACK_KEY]: newer });
+  const indexed = fakeIndexed();
+  await withBrowser(local, indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), newer);
+    assert.equal(indexed.data.get(DESK_KEY), newer);
+    assert.equal(local.getItem(LEGACY_KEY), legacy);
+  });
+});
+test("e3) divergent IDB and fallback copies fail closed instead of choosing a loser", async () => {
+  const old = legacyEnvelope();
+  const newer = JSON.stringify({ state: { ...baseline(), signoff: { newer: true } }, version: 0 });
+  const local = fakeLocal({ [LEGACY_KEY]: old, [FALLBACK_KEY]: newer });
+  const indexed = fakeIndexed({ [DESK_KEY]: old });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY), /khác nhau/u);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(local.getItem(FALLBACK_KEY), newer);
+  });
+});
+test("k3) version2 file cannot drop nested hashes even if its total hash is recomputed", async () => {
+  useDesk.getState().addDecision({ security: "ABC", priceNote: "", action: "observe", thesisId: null,
+    expectedReturn: "", probabilityNote: "", risk: "", sizeNote: "", catalyst: "",
+    invalidation: "", alternativeView: "", override: false, overrideReason: "" });
+  const current = JSON.parse(await useDesk.getState().exportDesk());
+  delete current.decisions[0].snapshotSha256;
+  current.sha256 = await hashJson(current);
+  const response = await useDesk.getState().importDesk(JSON.stringify(current));
+  assert.equal(response.ok, false);
+  assert.match(response.reason, /sha256/u);
+});

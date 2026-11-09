@@ -647,6 +647,9 @@ export const useDesk = create<DeskState>()(
           }
           const integrity = await countIntegrity(result.book.companySeals, result.book.decisions);
           const mismatch = integrity.mismatched > 0;
+          if (!result.legacy && integrity.missing > 0) {
+            return { ok: false, reason: "sha256: File phiên bản 2 thiếu mã băm của bản niêm phong hoặc ảnh chụp." };
+          }
           if ((hasMismatch || mismatch) && !acceptTamper) {
             return { ok: false, reason: "sha256: Mã băm không khớp. File có thể đã bị sửa. Chỉ Owner được xác nhận Vẫn nhập dù file đã bị sửa." };
           }

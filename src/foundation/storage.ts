@@ -136,18 +136,27 @@ async function initialize(): Promise<string | null> {
   activeMode = "indexeddb";
   publish({ mode: "indexeddb" });
   let raw = await idbRead(connection, DESK_KEY);
+  const local = requireLocal();
+  // A newer fallback may exist after a previous session had IndexedDB disabled.
+  // Never silently prefer the older V1 localStorage key over the V2 fallback.
+  const fallback = local.getItem(FALLBACK_KEY);
   if (raw === null) {
-    // Do not modify the original key. Write and byte-compare before accepting migration.
-    const legacy = requireLocal().getItem(LEGACY_KEY);
-    if (legacy !== null) {
-      checkEnvelope(legacy);
-      await idbWrite(connection, DESK_KEY, legacy);
+    const candidate = fallback ?? local.getItem(LEGACY_KEY);
+    if (candidate !== null) {
+      checkEnvelope(candidate);
+      await idbWrite(connection, DESK_KEY, candidate);
       const verified = await idbRead(connection, DESK_KEY);
-      if (verified !== legacy) throw new Error("Chép sổ cũ sang IndexedDB không khớp khi đọc lại.");
+      if (verified !== candidate) throw new Error("Chép sổ sang IndexedDB không khớp khi đọc lại.");
       raw = verified;
+      if (fallback !== null) local.removeItem(FALLBACK_KEY);
     }
   } else {
     checkEnvelope(raw);
+    if (fallback !== null) {
+      checkEnvelope(fallback);
+      if (fallback !== raw) throw new Error("IndexedDB và sổ dự phòng khác nhau. Không tự ghi đè; hãy sao lưu và đối chiếu hai bản.");
+      local.removeItem(FALLBACK_KEY);
+    }
   }
   if (raw !== null) checkEnvelope(raw);
   publish({ bytes: raw === null ? 0 : new TextEncoder().encode(raw).byteLength });

@@ -73,10 +73,21 @@ export async function recoverVerifiedBackup(raw: string): Promise<void> {
   // Quarantine must be durable and read back successfully BEFORE any write.
   const quarantined = await quarantineRawRecoveryCopies();
   if (quarantined.length === 0) throw new Error("Không có dữ liệu gốc để cách ly; từ chối ghi phục hồi.");
-  const envelope = JSON.stringify({ state: book, version: 0 });
+  const indexed = quarantined.find((copy) => copy.source === "indexeddb:" + DESK_KEY);
+  if (!indexed) throw new Error("Bản IndexedDB gốc không được cách ly.");
+  // Damaged JSON has no trustworthy version. Mark this an exceptional recovery
+  // generation; never overwrite another tab's newer bytes after quarantine.
+  let previousVersion = 0;
+  try { previousVersion = versionOf(indexed.raw); }
+  catch { /* Integrity of the old version is unknown; raw evidence is retained. */ }
+  const nextVersion = previousVersion + 1;
+  if (!Number.isSafeInteger(nextVersion)) throw new Error("Phiên bản phục hồi vượt giới hạn an toàn.");
+  const envelope = JSON.stringify({ state: book, version: 0, bookVersion: nextVersion });
   const db = await idbOpen();
   try {
-    await idbWrite(db, DESK_KEY, envelope);
+    if (!await idbReplaceIfCurrent(db, DESK_KEY, indexed.raw, envelope)) {
+      throw new Error("Xung đột khi phục hồi: tab khác đã thay đổi sổ; không ghi đè.");
+    }
     if (await idbRead(db, DESK_KEY) !== envelope) throw new Error("Không xác minh được dữ liệu phục hồi.");
   } finally { db.close?.(); }
   // Keep writes locked; a full page reload must hydrate the recovered book.
@@ -156,7 +167,13 @@ function idbRead(db: IDBDatabase, key: string): Promise<string | null> {
     try {
       const tx = db.transaction(DB_STORE, "readonly");
       const request = tx.objectStore(DB_STORE).get(key);
-      request.onsuccess = () => resolve(typeof request.result === "string" ? request.result : null);
+      request.onsuccess = () => {
+        if (request.result !== undefined && request.result !== null && typeof request.result !== "string") {
+          reject(new Error("IndexedDB chứa bản sổ không phải chuỗi; giữ nguyên và dừng đọc."));
+          return;
+        }
+        resolve(typeof request.result === "string" ? request.result : null);
+      };
       request.onerror = () => reject(request.error ?? new Error("Không đọc được IndexedDB."));
       tx.onerror = () => reject(tx.error ?? new Error("Không đọc được transaction."));
     } catch (error) { reject(error); }
@@ -174,34 +191,27 @@ function idbWrite(db: IDBDatabase, key: string, value: string): Promise<void> {
   });
 }
 /**
- * IndexedDB CAS primitive. Read and conditional write share ONE readwrite
- * transaction; concurrent tabs cannot interleave between comparison and put.
- * All standard IndexedDB writes must pass through this transaction.
+ * Generic byte-exact compare-and-swap. This is also used for installing the
+ * byte-identical legacy seed and for quarantine-gated recovery; neither path
+ * may blindly overwrite a book that another tab has changed.
  */
-export function idbCompareAndSwap(
+function idbReplaceIfCurrent(
   db: IDBDatabase, key: string, expectedRaw: string | null, replacementRaw: string,
 ): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    // Every accepted replacement advances the durable version by exactly one.
-    // Failed validation must never open a write transaction.
-    try {
-      if (versionOf(replacementRaw) !== versionOf(expectedRaw) + 1) {
-        reject(new Error("CAS yêu cầu bookVersion tăng đúng một bước."));
-        return;
-      }
-    } catch (error) { reject(error); return; }
-    let tx: IDBTransaction;
     let matched = false;
     try {
-      tx = db.transaction(DB_STORE, "readwrite");
+      const tx = db.transaction(DB_STORE, "readwrite");
       const store = tx.objectStore(DB_STORE);
       const request = store.get(key);
       request.onsuccess = () => {
-        const current = typeof request.result === "string" ? request.result : null;
-        if (current !== expectedRaw) {
-          matched = false;
+        if (request.result !== undefined && request.result !== null && typeof request.result !== "string") {
+          tx.abort();
+          reject(new Error("IndexedDB chứa dữ liệu không phải chuỗi; từ chối ghi đè."));
           return;
         }
+        const current = typeof request.result === "string" ? request.result : null;
+        if (current !== expectedRaw) return;
         matched = true;
         store.put(replacementRaw, key);
       };
@@ -211,6 +221,18 @@ export function idbCompareAndSwap(
       tx.onabort = () => reject(tx.error ?? new Error("CAS transaction bị hủy."));
     } catch (error) { reject(error); }
   });
+}
+
+/** Standard writes require a strictly monotonic bookVersion in the same transaction. */
+export function idbCompareAndSwap(
+  db: IDBDatabase, key: string, expectedRaw: string | null, replacementRaw: string,
+): Promise<boolean> {
+  try {
+    if (versionOf(replacementRaw) !== versionOf(expectedRaw) + 1) {
+      return Promise.reject(new Error("CAS yêu cầu bookVersion tăng đúng một bước."));
+    }
+  } catch (error) { return Promise.reject(error); }
+  return idbReplaceIfCurrent(db, key, expectedRaw, replacementRaw);
 }
 function checkEnvelope(raw: string): void {
   let value: unknown;
@@ -276,8 +298,11 @@ async function initialize(): Promise<string | null> {
     const candidate = fallback ?? local.getItem(LEGACY_KEY);
     if (candidate !== null) {
       checkEnvelope(candidate);
-      await idbWrite(connection, DESK_KEY, candidate);
+      const installed = await idbReplaceIfCurrent(connection, DESK_KEY, null, candidate);
       const verified = await idbRead(connection, DESK_KEY);
+      if (!installed && verified !== candidate) {
+        throw new Error("Sổ đã được tab khác tạo trong khi chuyển dữ liệu; không tự ghi đè.");
+      }
       if (verified !== candidate) throw new Error("Chép sổ sang IndexedDB không khớp khi đọc lại.");
       raw = verified;
       if (fallback !== null) local.removeItem(FALLBACK_KEY);

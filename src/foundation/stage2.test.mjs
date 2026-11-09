@@ -668,3 +668,59 @@ test("R2-F-04-d: storage refuses stale tab, locks further saves and preserves ne
     assert.equal(JSON.parse(memoryCopy).schemaVersion, 2);
   });
 });
+
+test("R2-F-04-e: concurrent creation does not overwrite an IndexedDB book with a legacy seed", async () => {
+  const seed = legacyEnvelope();
+  const anotherTab = JSON.stringify({ ...JSON.parse(seed), bookVersion: 3 });
+  const local = fakeLocal({ [LEGACY_KEY]: seed });
+  const indexed = fakeIndexed();
+  const originalGet = indexed.data.get.bind(indexed.data);
+  let firstRead = true;
+  indexed.data.get = (key) => {
+    if (key === DESK_KEY && firstRead) {
+      firstRead = false;
+      indexed.data.set(DESK_KEY, anotherTab); // another tab wins after initial read
+      return undefined;
+    }
+    return originalGet(key);
+  };
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY), /tab khác/u);
+    assert.equal(indexed.data.get(DESK_KEY), anotherTab);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(local.getItem(LEGACY_KEY), seed);
+  });
+});
+test("R2-F-04-f: recovery cannot overwrite bytes changed by another tab after quarantine", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const damaged = "damaged-book-before-recovery";
+  const newer = JSON.stringify({ state: baseline(), version: 0, bookVersion: 12 });
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed({ [DESK_KEY]: damaged });
+  const previousGet = indexed.data.get.bind(indexed.data);
+  let reads = 0;
+  indexed.data.get = (key) => {
+    if (key === DESK_KEY) {
+      reads++;
+      if (reads === 2) indexed.data.set(DESK_KEY, newer); // between quarantine and recovery CAS
+    }
+    return previousGet(key);
+  };
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Xung đột khi phục hồi/u);
+    assert.equal(indexed.data.get(DESK_KEY), newer);
+    assert.equal(indexed.calls.length, 0);
+    const key = [...local.map.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
+    assert.ok(key);
+    assert.equal(JSON.parse(local.getItem(key))[0].raw, damaged);
+  });
+});
+test("R2-F-04-g: invalid non-string IndexedDB payload cannot be treated as missing or overwritten", async () => {
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed({ [DESK_KEY]: { invalid: "raw" } });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY), /không phải chuỗi/u);
+    assert.deepEqual(indexed.data.get(DESK_KEY), { invalid: "raw" });
+    assert.equal(indexed.calls.length, 0);
+  });
+});

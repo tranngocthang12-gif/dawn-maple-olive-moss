@@ -511,3 +511,15 @@ test("R2-F-03-d: corrupt backup cannot quarantine or overwrite active bytes", as
     assert.equal([...local.map.keys()].some((k) => k.startsWith(QUARANTINE_PREFIX)), false);
   });
 });
+
+test("R2-F-03-e: no source bytes means no quarantine and no recovery overwrite", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const local = fakeLocal();
+  const indexed = fakeIndexed();
+  await withBrowser(local, indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), null);
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Không có dữ liệu gốc/u);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(indexed.data.size, 0);
+  });
+});

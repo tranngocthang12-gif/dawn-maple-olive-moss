@@ -62,7 +62,8 @@ export async function recoverVerifiedBackup(raw: string): Promise<void> {
   const integrity = await countIntegrity(book.companySeals, book.decisions);
   if (integrity.missing || integrity.mismatched) throw new Error("sha256: Backup có bản niêm phong hoặc ảnh chụp chưa xác minh.");
   // Quarantine must be durable and read back successfully BEFORE any write.
-  await quarantineRawRecoveryCopies();
+  const quarantined = await quarantineRawRecoveryCopies();
+  if (quarantined.length === 0) throw new Error("Không có dữ liệu gốc để cách ly; từ chối ghi phục hồi.");
   const envelope = JSON.stringify({ state: book, version: 0 });
   const db = await idbOpen();
   try {

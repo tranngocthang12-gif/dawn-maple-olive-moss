@@ -756,11 +756,12 @@ test("R2-F-04-i: post-CAS readback error locks all subsequent writes, despite pr
   await withBrowser(local, indexed.api, async () => {
     assert.equal(await durableStorage.getItem(DESK_KEY), initial);
     allowWritesAfterHydration();
-    const get = indexed.data.get.bind(indexed.data);
-    let reads = 0;
-    indexed.data.get = (key) => {
-      if (key === DESK_KEY && ++reads === 2) indexed.setFailReads(true);
-      return get(key);
+    // The CAS put has committed; subsequent readback must fail.
+    const originalSet = indexed.data.set.bind(indexed.data);
+    indexed.data.set = (key, value) => {
+      const result = originalSet(key, value);
+      if (key === DESK_KEY) indexed.setFailReads(true);
+      return result;
     };
     await durableStorage.setItem(DESK_KEY, initial);
     assert.equal(storageSnapshot().readOnly, true);
@@ -769,5 +770,25 @@ test("R2-F-04-i: post-CAS readback error locks all subsequent writes, despite pr
     const writes = indexed.calls.length;
     await durableStorage.setItem(DESK_KEY, initial);
     assert.equal(indexed.calls.length, writes);
+  });
+});
+
+test("R2-F-04-j: queued stale writes cannot bypass conflict lock", async () => {
+  const original = legacyEnvelope();
+  const indexed = fakeIndexed({ [DESK_KEY]: original });
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    await durableStorage.getItem(DESK_KEY);
+    allowWritesAfterHydration();
+    const newer = JSON.stringify({ ...JSON.parse(original), bookVersion: 1 });
+    indexed.data.set(DESK_KEY, newer);
+    await Promise.all([
+      durableStorage.setItem(DESK_KEY, original),
+      durableStorage.setItem(DESK_KEY, original),
+    ]);
+    await waitForDurableWrites();
+    assert.equal(indexed.data.get(DESK_KEY), newer);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(storageSnapshot().conflict, true);
+    assert.equal(storageSnapshot().ready, false);
   });
 });

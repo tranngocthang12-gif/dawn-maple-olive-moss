@@ -9,7 +9,7 @@ import { emptyQuality, sealFromCompany } from "./logic.ts";
 import { bookSchema, migrateBook } from "./schema.ts";
 import { canonicalJson, sha256Hex, hashJson, sealHash, verifyJsonHash } from "./hash.ts";
 import { durableStorage, LEGACY_KEY, DESK_KEY, FALLBACK_KEY, resetStorageForTest,
-  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites, readRawRecoveryCopies, quarantineRawRecoveryCopies, QUARANTINE_PREFIX } from "./storage.ts";
+  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites, readRawRecoveryCopies, quarantineRawRecoveryCopies, recoverVerifiedBackup, QUARANTINE_PREFIX } from "./storage.ts";
 
 const baseline = () => ({
   theses: [], decisions: [], ledger: [], signoff: {}, activeThesisId: null,
@@ -478,5 +478,36 @@ test("R2-F-03-b: quarantine keeps damaged source bytes and never overwrites acti
     assert.equal(indexed.data.get(DESK_KEY), broken);
     assert.equal(local.getItem(LEGACY_KEY), "legacy-raw");
     assert.equal(indexed.calls.length, 0);
+  });
+});
+
+test("R2-F-03-c: verified V2 backup recovers only after quarantining damaged active bytes", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const broken = "broken-active-\\u0000";
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await recoverVerifiedBackup(backup);
+    const key = [...local.map.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(key);
+    const copies = JSON.parse(local.getItem(key));
+    assert.equal(copies[0].raw, broken);
+    const saved = JSON.parse(indexed.data.get(DESK_KEY));
+    assert.equal(saved.state.sha256, JSON.parse(backup).sha256);
+    assert.equal(storageSnapshot().ready, false);
+  });
+});
+test("R2-F-03-d: corrupt backup cannot quarantine or overwrite active bytes", async () => {
+  const backup = JSON.parse(await useDesk.getState().exportDesk());
+  backup.mandate.currency = "EDITED";
+  const local = fakeLocal();
+  const indexed = fakeIndexed({ [DESK_KEY]: "broken-active" });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await assert.rejects(() => recoverVerifiedBackup(JSON.stringify(backup)), /sha256/u);
+    assert.equal(indexed.data.get(DESK_KEY), "broken-active");
+    assert.equal(indexed.calls.length, 0);
+    assert.equal([...local.map.keys()].some((k) => k.startsWith(QUARANTINE_PREFIX)), false);
   });
 });

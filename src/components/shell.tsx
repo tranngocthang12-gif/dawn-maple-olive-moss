@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useDesk } from "@/foundation/store";
-import { allowWritesAfterHydration, readRawRecoveryCopies, reportLoadFailure, storageSnapshot, watchStorage } from "@/foundation/storage";
+import { allowWritesAfterHydration, readRawRecoveryCopies, recoverVerifiedBackup, reportLoadFailure, storageSnapshot, watchStorage } from "@/foundation/storage";
 
 const nav = [
   { href: "/", label: "Bàn" },
@@ -60,6 +60,17 @@ function RecoveryPanel({ error }: { error: string }) {
       setMessage("Không thể tải dữ liệu thô: " + (cause instanceof Error ? cause.message : String(cause)));
     } finally { setBusy(false); }
   };
+  const restore = async (file: File) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (!window.confirm("Chỉ phục hồi bằng backup V2 có mã băm hợp lệ. Dữ liệu lỗi sẽ được cách ly trước khi ghi. Tiếp tục?")) return;
+      await recoverVerifiedBackup(await file.text());
+      setMessage("Backup đã được kiểm tra và lưu. Hãy tải lại trang để mở sổ đã phục hồi.");
+    } catch (cause) {
+      setMessage("Không thể phục hồi: " + (cause instanceof Error ? cause.message : String(cause)));
+    } finally { setBusy(false); }
+  };
   return (
     <section role="alert" className="border border-red-700 p-5 text-red-700">
       <p>Không mở được sổ: {error}. Không tạo sổ trống để thay dữ liệu thật.</p>
@@ -67,7 +78,16 @@ function RecoveryPanel({ error }: { error: string }) {
         className="mt-4 border border-red-700 px-4 py-2 text-sm">
         Tải dữ liệu thô đang lưu (IndexedDB và khóa cũ)
       </button>
-      <p className="mt-3 text-sm">Chưa cho phép ghi phục hồi khi chưa xác minh cách ly dữ liệu lỗi. Giữ nguyên trang và tệp sao lưu.</p>
+      <label className="ml-3 inline-block cursor-pointer border border-red-700 px-4 py-2 text-sm">
+        Phục hồi từ backup V2 đã xác minh
+        <input type="file" accept="application/json,.json" disabled={busy} className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void restore(file);
+          }} />
+      </label>
+      <p className="mt-3 text-sm">Backup phải có mã băm hợp lệ. Nếu không cách ly được dữ liệu gốc, phục hồi sẽ bị từ chối.</p>
       {message ? <p role="status" className="mt-3 text-sm">{message}</p> : null}
     </section>
   );

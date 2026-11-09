@@ -1,4 +1,4 @@
-import { ensureHashes } from "./hash.ts";
+import { ensureHashes, hashJson, countIntegrity } from "./hash.ts";
 import type { CompanySeal, Decision } from "./types.ts";
 import { preflightBook, migrateBook } from "./schema.ts";
 
@@ -44,6 +44,33 @@ export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> 
 }
 
 
+/**
+ * Recovery is intentionally stricter than normal import: a verified V2 backup
+ * only, no unverified legacy or tamper waiver while the active book is broken.
+ * The active copy is never written before a verified quarantine exists.
+ */
+export async function recoverVerifiedBackup(raw: string): Promise<void> {
+  if (status.ready || writesUnlocked) throw new Error("Chỉ phục hồi qua màn hình sổ lỗi.");
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); }
+  catch { throw new Error("Backup không phải JSON hợp lệ."); }
+  const migrated = migrateBook(parsed);
+  if (!migrated.ok) throw new Error("Backup không hợp lệ: " + migrated.field + " — " + migrated.reason);
+  if (migrated.legacy) throw new Error("Backup V1 chưa kiểm không được phục hồi tự động.");
+  const book = migrated.book;
+  if (!book.sha256 || await hashJson(book) !== book.sha256) throw new Error("sha256: Backup không khớp mã băm tổng.");
+  const integrity = await countIntegrity(book.companySeals, book.decisions);
+  if (integrity.missing || integrity.mismatched) throw new Error("sha256: Backup có bản niêm phong hoặc ảnh chụp chưa xác minh.");
+  // Quarantine must be durable and read back successfully BEFORE any write.
+  await quarantineRawRecoveryCopies();
+  const envelope = JSON.stringify({ state: book, version: 0 });
+  const db = await idbOpen();
+  try {
+    await idbWrite(db, DESK_KEY, envelope);
+    if (await idbRead(db, DESK_KEY) !== envelope) throw new Error("Không xác minh được dữ liệu phục hồi.");
+  } finally { db.close?.(); }
+  // Keep writes locked; a full page reload must hydrate the recovered book.
+}
 export type StorageMode = "loading" | "indexeddb" | "fallback" | "unavailable";
 export type StorageStatus = {
   ready: boolean;

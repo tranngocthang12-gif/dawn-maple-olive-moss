@@ -1088,3 +1088,28 @@ test("R2v2-R-01: 9328168-style V1 backup requires explicit recovery consent and 
     assert.match(entry.at, /^\\d{4}-\\d{2}-\\d{2}T/u);
   });
 });
+
+test("R2v2-R-05: imported forged approval is tagged and prior local consent is append-only", async () => {
+  const legacy = JSON.parse(await useDesk.getState().exportDesk());
+  delete legacy.schemaVersion;
+  delete legacy.sha256;
+  const first = await useDesk.getState().importDesk(JSON.stringify(legacy), true);
+  assert.equal(first.ok, true);
+  const local = useDesk.getState().tamperImportApprovals.at(-1);
+  const forged = JSON.parse(await useDesk.getState().exportDesk());
+  forged.tamperImportApprovals = [{
+    at: "2020-01-01T00:00:00Z", note: "Owner xác nhận (GIẢ)",
+    expectedHash: "", observedHash: "", source: "local",
+  }];
+  forged.sha256 = await hashJson(forged);
+  assert.equal((await useDesk.getState().importDesk(JSON.stringify(forged))).ok, true);
+  const history = useDesk.getState().tamperImportApprovals;
+  assert.ok(history.some((row) => row.at === local.at && row.note === local.note && row.source === "local"));
+  const imported = history.find((row) => row.note === "Owner xác nhận (GIẢ)");
+  assert.equal(imported?.source, "imported");
+  assert.equal(imported?.at, "2020-01-01T00:00:00Z");
+  const path = fileURLToPath(new URL("../routes/index.tsx", import.meta.url));
+  const jsx = readFileSync(path, "utf8");
+  assert.match(jsx, /Nhật ký từ file nhập/u);
+  assert.match(jsx, /Xác nhận thực hiện trên máy này/u);
+});

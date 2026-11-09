@@ -68,7 +68,7 @@ const mandate = z.strictObject({ locked: b, lockedAt: t, currency: t, horizon: t
 const signal = z.strictObject({ id: t, at: t, updatedAt: t, family: t, hypothesis: t, mechanism: t,
   lag: t, death: t, rights: t, rightsOk: b, status: z.enum(["draft", "alive", "dead"]),
   diedAt: t, deathReason: t });
-const approval = z.strictObject({ at: t, note: t, expectedHash: t, observedHash: t });
+const approval = z.strictObject({ at: t, note: t, expectedHash: t, observedHash: t, source: z.enum(["local", "imported"]).optional() });
 
 export const bookSchema = z.strictObject({
   schemaVersion: z.literal(2),

@@ -174,6 +174,7 @@ function backupFilename(): string {
 function BookCopy() {
   const exportDesk = useDesk((s) => s.exportDesk);
   const importDesk = useDesk((s) => s.importDesk);
+  const approvals = useDesk((s) => s.tamperImportApprovals);
   const [msg, setMsg] = useState("");
   const [working, setWorking] = useState(false);
 
@@ -237,6 +238,24 @@ function BookCopy() {
         </label>
       </div>
       {msg ? <p role="status" className="mt-3 text-sm text-muted">{msg}</p> : null}
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <section>
+          <h3 className="font-semibold">Xác nhận thực hiện trên máy này</h3>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            {approvals.filter((row) => row.source !== "imported").map((row, index) => (
+              <li key={index}>{row.at}: {row.note}</li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h3 className="font-semibold">Nhật ký từ file nhập (không phải xác nhận trên máy)</h3>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            {approvals.filter((row) => row.source === "imported").map((row, index) => (
+              <li key={index}>từ file nhập — {row.at}: {row.note}</li>
+            ))}
+          </ul>
+        </section>
+      </div>
     </section>
   );
 }

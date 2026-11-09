@@ -670,17 +670,32 @@ export const useDesk = create<DeskState>()(
             return { ok: false, reason: "sha256: Mã băm không khớp. File có thể đã bị sửa. Chỉ Owner được xác nhận Vẫn nhập dù file đã bị sửa." };
           }
           const upgraded = result.legacy ? await ensureHashes(result.book, "legacy-backfill") : result.book;
-          const approved = result.legacy
-            ? [...upgraded.tamperImportApprovals, {
-                at: new Date().toISOString(), note: "bản cũ chưa kiểm — Owner xác nhận nhập",
-                expectedHash: "", observedHash: "",
-              }]
-            : hasMismatch || mismatch
-              ? [...upgraded.tamperImportApprovals, approvalFromMismatch(expected, actual)]
-              : upgraded.tamperImportApprovals;
-          // Commit only after JSON parse, shape preflight, migration, full Zod,
-          // top-level hash and nested integrity checks have succeeded.
-          commit(normalizePersisted({ ...upgraded, tamperImportApprovals: approved }));
+          // All approvals embedded in an incoming file are untrusted imported
+          // history, even if their source field falsely claims "local".
+          const incoming = upgraded.tamperImportApprovals.map((row) => ({
+            ...row, source: "imported" as const,
+          }));
+          const newlyApproved = [
+            ...(result.legacy ? [{
+              at: new Date().toISOString(), note: "bản cũ chưa kiểm — Owner xác nhận nhập",
+              expectedHash: "", observedHash: "", source: "local" as const,
+            }] : []),
+            ...(hasMismatch || mismatch ? [{
+              ...approvalFromMismatch(expected, actual), source: "local" as const,
+            }] : []),
+          ];
+          // Append the local audit history instead of replacing it with a
+          // foreign file. Read the latest state at commit to avoid races.
+          commit((current) => normalizePersisted({
+            ...upgraded,
+            tamperImportApprovals: [
+              ...current.tamperImportApprovals.map((row) => ({
+                ...row, source: row.source ?? ("local" as const),
+              })),
+              ...incoming,
+              ...newlyApproved,
+            ],
+          }));
           return { ok: true };
         } catch (error) {
           return { ok: false, reason: "Không thể nhập sổ: " + (error instanceof Error ? error.message : String(error)) };

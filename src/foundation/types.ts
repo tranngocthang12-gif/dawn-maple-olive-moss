@@ -85,7 +85,7 @@ export type OutcomeLogRow = {
   postMortemNote: string;
   legacyNote?: "chuyển từ bản cũ";
 };
-export type TamperImportApproval = { at: string; note: string; expectedHash: string; observedHash: string };
+export type TamperImportApproval = { at: string; note: string; expectedHash: string; observedHash: string; source?: "local" | "imported" };
 
 export type ThesisStatus = "invalidated";
 export type ThesisReadiness = "draft" | "ready" | "thin-ready" | "invalidated";

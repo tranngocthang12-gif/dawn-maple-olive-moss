@@ -249,7 +249,8 @@ test("c2) migrated legacy decision gets one dated outcomeLog row with provenance
   delete exported.decisions[0].outcomeLog;
   delete exported.decisions[0].snapshotSha256;
   delete exported.decisions[0].snapshotHashOrigin;
-  const result = await useDesk.getState().importDesk(JSON.stringify(exported));
+  // F-01 requires explicit Owner consent even for genuine V1 migration.
+  const result = await useDesk.getState().importDesk(JSON.stringify(exported), true);
   assert.equal(result.ok, true);
   const history = useDesk.getState().decisions[0].outcomeLog;
   assert.equal(history.length, 1);

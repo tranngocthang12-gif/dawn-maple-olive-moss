@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";

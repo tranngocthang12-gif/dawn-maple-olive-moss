@@ -279,7 +279,12 @@ function editablePatch(patch: Partial<Thesis>): Partial<Thesis> {
 
 export const useDesk = create<DeskState>()(
   persist<DeskState, [], [], Persisted>(
-    (set, get) => ({
+    (set, get) => {
+      const commit = (partial: Partial<DeskState> | ((state: DeskState) => Partial<DeskState>)) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return;
+        set(partial);
+      };
+      return ({
       theses: [],
       decisions: [],
       ledger: [],
@@ -295,9 +300,10 @@ export const useDesk = create<DeskState>()(
       ready: false,
       setReady: (v) => set({ ready: v }),
       createThesis: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().theses.length >= caps.theses) return { ok: false, reason: fullBook };
         const thesis = freshThesis();
-        set((s) => ({ theses: [thesis, ...s.theses], activeThesisId: thesis.id }));
+        commit((s) => ({ theses: [thesis, ...s.theses], activeThesisId: thesis.id }));
         return { ok: true, id: thesis.id };
       },
       createSuccessor: (id) => {
@@ -306,7 +312,7 @@ export const useDesk = create<DeskState>()(
         if (prior.status !== "invalidated") return { ok: false, reason: "Chỉ thesis đã hủy mới được tạo thesis kế tiếp." };
         if (get().theses.length >= caps.theses) return { ok: false, reason: fullBook };
         const next = freshThesis(prior.id);
-        set((s) => ({ theses: [next, ...s.theses], activeThesisId: next.id }));
+        commit((s) => ({ theses: [next, ...s.theses], activeThesisId: next.id }));
         return { ok: true, id: next.id };
       },
       invalidateThesis: (id, reason) => {
@@ -317,7 +323,7 @@ export const useDesk = create<DeskState>()(
         if (trimmed.length < 12) return { ok: false, reason: "Hủy thesis cần lý do tối thiểu 12 ký tự." };
         const at = new Date().toISOString();
         const amendment: Amendment = { id: newId(), at, note: `Hủy thesis: ${trimmed}` };
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id
               ? { ...t, status: "invalidated", updatedAt: at, amendments: [...(t.amendments ?? []), amendment] }
@@ -327,18 +333,18 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       updateThesis: (id, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) => (t.id === id && t.status !== "invalidated" ? touch(t, editablePatch(patch)) : t)),
         })),
       patchText: (id, key, value) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" ? touch(t, { texts: { ...t.texts, [key]: value } }) : t,
           ),
         })),
-      setActive: (id) => set({ activeThesisId: id }),
+      setActive: (id) => commit({ activeThesisId: id }),
       addClaim: (id) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, {
@@ -351,7 +357,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       updateClaim: (id, claimId, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { claims: t.claims.map((c) => (c.id === claimId ? { ...c, ...patch } : c)) })
@@ -359,13 +365,13 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       removeClaim: (id, claimId) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" ? touch(t, { claims: t.claims.filter((c) => c.id !== claimId) }) : t,
           ),
         })),
       addKill: (id) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { kills: [...t.kills, { id: newId(), text: "", threshold: "" }] })
@@ -373,7 +379,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       updateKill: (id, killId, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { kills: t.kills.map((k) => (k.id === killId ? { ...k, ...patch } : k)) })
@@ -381,7 +387,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       removeKill: (id, killId) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" && t.kills.length > 3
               ? touch(t, { kills: t.kills.filter((k) => k.id !== killId) })
@@ -390,10 +396,11 @@ export const useDesk = create<DeskState>()(
         })),
       addLedger: (row) => {
         if (get().ledger.length >= caps.ledger) return { ok: false, reason: fullBook };
-        set((s) => ({ ledger: [{ ...row, id: newId(), at: new Date().toISOString() }, ...s.ledger] }));
+        commit((s) => ({ ledger: [{ ...row, id: newId(), at: new Date().toISOString() }, ...s.ledger] }));
         return { ok: true };
       },
       addDecision: (input) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (input.override && input.overrideReason.trim().length < 12) {
           return { ok: false, reason: "Ghi đè cần lý do tối thiểu 12 ký tự, kể cả khi thesis đã hủy." };
         }
@@ -463,11 +470,11 @@ export const useDesk = create<DeskState>()(
           voidReason: "",
           amendments: [],
         };
-        set((s) => ({ decisions: [decision, ...s.decisions] }));
+        commit((s) => ({ decisions: [decision, ...s.decisions] }));
         return { ok: true };
       },
       patchOutcome: (id, patch) =>
-        set((s) => ({ decisions: s.decisions.map((d) => {
+        commit((s) => ({ decisions: s.decisions.map((d) => {
           if (d.id !== id) return d;
           const at = new Date().toISOString();
           const log = { at, ...patch };
@@ -477,17 +484,17 @@ export const useDesk = create<DeskState>()(
         const trimmed = note.trim();
         if (trimmed.length < 8) return;
         const amendment: Amendment = { id: newId(), at: new Date().toISOString(), note: trimmed };
-        set((s) => ({
+        commit((s) => ({
           decisions: s.decisions.map((d) => (d.id === id ? { ...d, amendments: [...d.amendments, amendment] } : d)),
         }));
       },
       voidDecision: (id, reason) => {
         if (reason.trim().length < 12) return;
-        set((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, voided: true, voidReason: reason.trim() } : d)) }));
+        commit((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, voided: true, voidReason: reason.trim() } : d)) }));
       },
-      toggleSignoff: (key) => set((s) => ({ signoff: { ...s.signoff, [key]: !s.signoff[key] } })),
+      toggleSignoff: (key) => commit((s) => ({ signoff: { ...s.signoff, [key]: !s.signoff[key] } })),
       patchMandate: (patch) =>
-        set((s) => {
+        commit((s) => {
           if (s.mandate.locked) return s;
           return { mandate: { ...s.mandate, ...patch, locked: false, amendments: s.mandate.amendments } };
         }),
@@ -497,13 +504,13 @@ export const useDesk = create<DeskState>()(
         if (m.currency.trim().length < 2 || m.horizon.trim().length < 2) return { ok: false, reason: "Cần tiền tệ tiêu dùng và chân trời." };
         if (m.universeInner.trim().length < 12) return { ok: false, reason: "Vành trong cần một mô tả cụ thể, không phải một chữ." };
         if (m.leverage === "capped" && m.leverageNote.trim().length < 8) return { ok: false, reason: "Đòn bẩy có trần thì phải ghi trần đó." };
-        set((s) => ({ mandate: { ...s.mandate, locked: true, lockedAt: new Date().toISOString() } }));
+        commit((s) => ({ mandate: { ...s.mandate, locked: true, lockedAt: new Date().toISOString() } }));
         return { ok: true };
       },
       unlockMandate: (reason) => {
         if (reason.trim().length < 12) return { ok: false, reason: "Mở khóa cần lý do. Đây là ghi đè." };
         const note: Amendment = { id: newId(), at: new Date().toISOString(), note: `Mở khóa: ${reason.trim()}` };
-        set((s) => ({ mandate: { ...s.mandate, locked: false, amendments: [...s.mandate.amendments, note] } }));
+        commit((s) => ({ mandate: { ...s.mandate, locked: false, amendments: [...s.mandate.amendments, note] } }));
         return { ok: true };
       },
       addWorld: (row) => {
@@ -512,7 +519,7 @@ export const useDesk = create<DeskState>()(
         if (!recordUsable(row)) return { ok: false, reason: "Quan sát thế giới chỉ vào sổ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         if (get().world.length >= caps.world) return { ok: false, reason: fullBook };
         const obs: WorldObs = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ world: [obs, ...s.world] }));
+        commit((s) => ({ world: [obs, ...s.world] }));
         return { ok: true };
       },
       addBaseRate: (row) => {
@@ -521,7 +528,7 @@ export const useDesk = create<DeskState>()(
         if (!recordUsable(row)) return { ok: false, reason: "Base rate cần nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         if (get().baseRates.length >= caps.baseRates) return { ok: false, reason: fullBook };
         const rate: BaseRate = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ baseRates: [rate, ...s.baseRates] }));
+        commit((s) => ({ baseRates: [rate, ...s.baseRates] }));
         return { ok: true };
       },
       createCompany: () => {
@@ -543,10 +550,10 @@ export const useDesk = create<DeskState>()(
           quality: emptyQuality(),
           sealId: "",
         };
-        set((s) => ({ companies: [file, ...s.companies] }));
+        commit((s) => ({ companies: [file, ...s.companies] }));
         return { ok: true, id };
       },
-      patchCompany: (id, patch) => set((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, ...patch, status: "draft", updatedAt: new Date().toISOString() } : c)) })),
+      patchCompany: (id, patch) => commit((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, ...patch, status: "draft", updatedAt: new Date().toISOString() } : c)) })),
       addCompanyFact: (id, row) => {
         if (row.text.trim().length < 2) return { ok: false, reason: "Sự kiện trống." };
         if (!recordUsable(row)) return { ok: false, reason: "Sự kiện doanh nghiệp chỉ vào hồ sơ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
@@ -554,10 +561,10 @@ export const useDesk = create<DeskState>()(
         if (!file) return { ok: false, reason: "Không thấy hồ sơ doanh nghiệp." };
         if (file.facts.length >= caps.facts) return { ok: false, reason: fullBook };
         const fact: CompanyFact = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, facts: [fact, ...c.facts], status: "draft", updatedAt: fact.at } : c)) }));
+        commit((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, facts: [fact, ...c.facts], status: "draft", updatedAt: fact.at } : c)) }));
         return { ok: true };
       },
-      setQuality: (id, key, patch) => set((s) => ({ companies: s.companies.map((c) => c.id === id ? { ...c, status: "draft", updatedAt: new Date().toISOString(), quality: { ...c.quality, [key]: { ...c.quality[key], ...patch } } } : c) })),
+      setQuality: (id, key, patch) => commit((s) => ({ companies: s.companies.map((c) => c.id === id ? { ...c, status: "draft", updatedAt: new Date().toISOString(), quality: { ...c.quality, [key]: { ...c.quality[key], ...patch } } } : c) })),
       fileCompany: (id) => {
         const file = get().companies.find((c) => c.id === id);
         if (!file) return { ok: false, reason: "Không thấy hồ sơ doanh nghiệp." };
@@ -567,7 +574,7 @@ export const useDesk = create<DeskState>()(
         if (get().companySeals.length >= caps.seals) return { ok: false, reason: fullBook };
         const filedAt = new Date().toISOString();
         const seal = { ...sealFromCompany({ ...file, updatedAt: filedAt }, filedAt, newId(), true), sha256Origin: "created" as const };
-        set((s) => ({ companySeals: [seal, ...s.companySeals], companies: s.companies.map((c) => (c.id === id ? { ...c, status: "filed", sealId: seal.id, updatedAt: filedAt } : c)) }));
+        commit((s) => ({ companySeals: [seal, ...s.companySeals], companies: s.companies.map((c) => (c.id === id ? { ...c, status: "filed", sealId: seal.id, updatedAt: filedAt } : c)) }));
         return { ok: true };
       },
       createSignal: () => {
@@ -575,10 +582,10 @@ export const useDesk = create<DeskState>()(
         const id = newId();
         const now = new Date().toISOString();
         const row: Signal = { id, at: now, updatedAt: now, family: "", hypothesis: "", mechanism: "", lag: "", death: "", rights: "", rightsOk: false, status: "draft", diedAt: "", deathReason: "" };
-        set((s) => ({ signals: [row, ...s.signals] }));
+        commit((s) => ({ signals: [row, ...s.signals] }));
         return { ok: true, id };
       },
-      patchSignal: (id, patch) => set((s) => ({ signals: s.signals.map((row) => row.id === id && row.status === "draft" ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row) })),
+      patchSignal: (id, patch) => commit((s) => ({ signals: s.signals.map((row) => row.id === id && row.status === "draft" ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row) })),
       markSignalAlive: (id) => {
         const row = get().signals.find((s) => s.id === id);
         if (!row) return { ok: false, reason: "Không thấy tín hiệu." };
@@ -586,7 +593,7 @@ export const useDesk = create<DeskState>()(
         if (row.status === "alive") return { ok: false, reason: "Tín hiệu này đang sống." };
         const issues = signalAliveIssues(row);
         if (issues.length) return { ok: false, reason: issues[0] };
-        set((s) => ({ signals: s.signals.map((item) => (item.id === id ? { ...item, status: "alive", updatedAt: new Date().toISOString() } : item)) }));
+        commit((s) => ({ signals: s.signals.map((item) => (item.id === id ? { ...item, status: "alive", updatedAt: new Date().toISOString() } : item)) }));
         return { ok: true };
       },
       killSignal: (id, reason) => {
@@ -595,7 +602,7 @@ export const useDesk = create<DeskState>()(
         if (row.status === "dead") return { ok: false, reason: "Tín hiệu này đã chết." };
         if (reason.trim().length < 12) return { ok: false, reason: "Khai tử cần lý do. Giữ vì đã tốn công không phải lý do." };
         const at = new Date().toISOString();
-        set((s) => ({ signals: s.signals.map((item) => item.id === id ? { ...item, status: "dead", diedAt: at, deathReason: reason.trim(), updatedAt: at } : item) }));
+        commit((s) => ({ signals: s.signals.map((item) => item.id === id ? { ...item, status: "dead", diedAt: at, deathReason: reason.trim(), updatedAt: at } : item) }));
         return { ok: true };
       },
       verifyIntegrity: async () => {
@@ -603,6 +610,7 @@ export const useDesk = create<DeskState>()(
         catch { return { matched: 0, mismatched: 0, missing: get().companySeals.length + get().decisions.length }; }
       },
       exportDesk: async () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) throw new Error("Đang mở sổ; không thể xuất bản chưa nạp.");
         const state = normalizePersisted(get());
         const hashed = await ensureHashes(state, "legacy-backfill");
         const payload = { schemaVersion: 2 as const, ...hashed };
@@ -610,7 +618,7 @@ export const useDesk = create<DeskState>()(
         if (!validated.ok) throw new Error("Sổ không thể xuất: " + validated.field + " — " + validated.reason);
         const sha256 = await hashJson(validated.book);
         // Keep the in-memory book synchronized with its persisted hash metadata.
-        set((s) => ({
+        commit((s) => ({
           decisions: hashed.decisions,
           companySeals: hashed.companySeals,
           tamperImportApprovals: hashed.tamperImportApprovals,
@@ -618,6 +626,7 @@ export const useDesk = create<DeskState>()(
         return JSON.stringify({ ...validated.book, sha256 }, null, 2);
       },
       importDesk: async (raw, acceptTamper = false) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể nhập." };
         try {
           let parsed: unknown;
           try { parsed = JSON.parse(raw); }
@@ -643,13 +652,14 @@ export const useDesk = create<DeskState>()(
             : upgraded.tamperImportApprovals;
           // Commit only after JSON parse, shape preflight, migration, full Zod,
           // top-level hash and nested integrity checks have succeeded.
-          set(normalizePersisted({ ...upgraded, tamperImportApprovals: approved }));
+          commit(normalizePersisted({ ...upgraded, tamperImportApprovals: approved }));
           return { ok: true };
         } catch (error) {
           return { ok: false, reason: "Không thể nhập sổ: " + (error instanceof Error ? error.message : String(error)) };
         }
       },
-    }),
+      });
+    },
     {
       name: "chinam-foundation-v2",
       storage: createJSONStorage(() => durableStorage),

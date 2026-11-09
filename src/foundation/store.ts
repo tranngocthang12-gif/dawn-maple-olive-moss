@@ -311,6 +311,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true, id: thesis.id };
       },
       createSuccessor: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const prior = get().theses.find((t) => t.id === id);
         if (!prior) return { ok: false, reason: "Không thấy thesis gốc." };
         if (prior.status !== "invalidated") return { ok: false, reason: "Chỉ thesis đã hủy mới được tạo thesis kế tiếp." };
@@ -320,6 +321,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true, id: next.id };
       },
       invalidateThesis: (id, reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const thesis = get().theses.find((t) => t.id === id);
         if (!thesis) return { ok: false, reason: "Không thấy thesis." };
         if (thesis.status === "invalidated") return { ok: false, reason: "Thesis này đã hủy và chỉ đọc." };
@@ -399,6 +401,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       addLedger: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().ledger.length >= caps.ledger) return { ok: false, reason: fullBook };
         commit((s) => ({ ledger: [{ ...row, id: newId(), at: new Date().toISOString() }, ...s.ledger] }));
         return { ok: true };
@@ -503,6 +506,7 @@ export const useDesk = create<DeskState>()(
           return { mandate: { ...s.mandate, ...patch, locked: false, amendments: s.mandate.amendments } };
         }),
       lockMandate: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const m = get().mandate;
         if (m.locked) return { ok: false, reason: "Ủy thác đã khóa." };
         if (m.currency.trim().length < 2 || m.horizon.trim().length < 2) return { ok: false, reason: "Cần tiền tệ tiêu dùng và chân trời." };
@@ -512,12 +516,14 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       unlockMandate: (reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (reason.trim().length < 12) return { ok: false, reason: "Mở khóa cần lý do. Đây là ghi đè." };
         const note: Amendment = { id: newId(), at: new Date().toISOString(), note: `Mở khóa: ${reason.trim()}` };
         commit((s) => ({ mandate: { ...s.mandate, locked: false, amendments: [...s.mandate.amendments, note] } }));
         return { ok: true };
       },
       addWorld: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.name.trim().length < 2 || row.geography.trim().length < 2) return { ok: false, reason: "Cần tên chỉ tiêu và địa lý." };
         if (![row.level, row.delta, row.acceleration].some((x) => x.trim())) return { ok: false, reason: "Cần ít nhất một trong ba: mức, tốc độ đổi, gia tốc." };
         if (!recordUsable(row)) return { ok: false, reason: "Quan sát thế giới chỉ vào sổ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
@@ -527,6 +533,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       addBaseRate: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.name.trim().length < 2 || row.event.trim().length < 12 || row.rateNote.trim().length < 2) return { ok: false, reason: "Cần tên, định nghĩa sự kiện, và con số kèm mẫu." };
         if (row.caveat.trim().length < 12) return { ok: false, reason: "Base rate phải ghi giới hạn: nơi, thời, và cái nó không nói." };
         if (!recordUsable(row)) return { ok: false, reason: "Base rate cần nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
@@ -536,6 +543,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       createCompany: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().companies.length >= caps.companies) return { ok: false, reason: fullBook };
         const id = newId();
         const now = new Date().toISOString();
@@ -559,6 +567,7 @@ export const useDesk = create<DeskState>()(
       },
       patchCompany: (id, patch) => commit((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, ...patch, status: "draft", updatedAt: new Date().toISOString() } : c)) })),
       addCompanyFact: (id, row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.text.trim().length < 2) return { ok: false, reason: "Sự kiện trống." };
         if (!recordUsable(row)) return { ok: false, reason: "Sự kiện doanh nghiệp chỉ vào hồ sơ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         const file = get().companies.find((c) => c.id === id);
@@ -570,6 +579,7 @@ export const useDesk = create<DeskState>()(
       },
       setQuality: (id, key, patch) => commit((s) => ({ companies: s.companies.map((c) => c.id === id ? { ...c, status: "draft", updatedAt: new Date().toISOString(), quality: { ...c.quality, [key]: { ...c.quality[key], ...patch } } } : c) })),
       fileCompany: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const file = get().companies.find((c) => c.id === id);
         if (!file) return { ok: false, reason: "Không thấy hồ sơ doanh nghiệp." };
         const issues = companyFileIssues(file);
@@ -582,6 +592,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       createSignal: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().signals.length >= caps.signals) return { ok: false, reason: fullBook };
         const id = newId();
         const now = new Date().toISOString();
@@ -591,6 +602,7 @@ export const useDesk = create<DeskState>()(
       },
       patchSignal: (id, patch) => commit((s) => ({ signals: s.signals.map((row) => row.id === id && row.status === "draft" ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row) })),
       markSignalAlive: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const row = get().signals.find((s) => s.id === id);
         if (!row) return { ok: false, reason: "Không thấy tín hiệu." };
         if (row.status === "dead") return { ok: false, reason: "Tín hiệu đã chết không được hồi sinh. Mở một dòng mới." };
@@ -601,6 +613,7 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       killSignal: (id, reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const row = get().signals.find((s) => s.id === id);
         if (!row) return { ok: false, reason: "Không thấy tín hiệu." };
         if (row.status === "dead") return { ok: false, reason: "Tín hiệu này đã chết." };

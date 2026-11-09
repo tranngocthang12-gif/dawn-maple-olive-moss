@@ -1139,3 +1139,95 @@ test("R2v2-R-06: legacy backup with invalid nested hash requires two independent
   assert.ok(local.some((row) => row.note.includes("bản cũ chưa kiểm")));
   assert.ok(local.some((row) => row.note.includes("Vẫn nhập dù file đã bị sửa")));
 });
+
+test("stage2 followup L-01: importing a valid file must report failed durable IndexedDB write", async () => {
+  const indexed = fakeIndexed();
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), null);
+    allowWritesAfterHydration();
+    const backup = await useDesk.getState().exportDesk();
+    indexed.setFailWrites(true);
+    const result = await useDesk.getState().importDesk(backup);
+    assert.equal(result.ok, false, "import must not acknowledge unsaved in-memory book");
+    assert.match(result.reason, /CHƯA LƯU ĐƯỢC/u);
+    await waitForDurableWrites();
+    assert.equal(storageSnapshot().saveError, true);
+    assert.equal(indexed.data.get(DESK_KEY), undefined);
+  });
+});
+
+test("stage2 followup L-02: blocked localStorage permits exact IndexedDB export but not unsafe recovery", async () => {
+  const broken = "indexeddb-original-\u0000-byte-exact";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  const local = { getItem() { throw new Error("SecurityError: localStorage blocked"); },
+    setItem() { throw new Error("SecurityError: localStorage blocked"); } };
+  await withBrowser(local, indexed.api, async () => {
+    const copies = await readRawRecoveryCopies();
+    assert.equal(copies.find((c) => c.source === "indexeddb:" + DESK_KEY)?.raw, broken);
+    assert.ok(copies.some((c) => c.source.includes("localStorage: KHÔNG ĐỌC ĐƯỢC — SecurityError")));
+    const quarantined = await quarantineRawRecoveryCopies();
+    assert.equal(quarantined[0].raw, broken);
+    const quarantineKey = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantineKey, "recovery still requires durable verified quarantine");
+    assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+  });
+});
+
+// Fixture produced by the exact exportDesk callback and normalizePersisted from
+// src/foundation/store.ts at 9328168, evaluated on a synthetic V1 state.
+// It contains a locked mandate, a filed company/seal, thesis and resolved decision.
+test("stage2 followup L-03: genuine 9328168 V1 fixture imports and recovers only after Owner consent", async () => {
+  const path = fileURLToPath(new URL("./fixtures/v1-export-9328168.json", import.meta.url));
+  const raw = readFileSync(path, "utf8");
+  const v1 = JSON.parse(raw);
+  assert.ok(v1.mandate.locked, "V1 fixture must contain locked mandate");
+  assert.ok(v1.companies.some((company) => company.status === "filed"));
+  assert.ok(v1.theses.length > 0);
+  assert.ok(v1.decisions.some((d) => d.outcome !== "pending" && d.thesisSnapshot));
+  const before = snapshot();
+  const refused = await useDesk.getState().importDesk(raw);
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /legacy-unverified/u);
+  assert.equal(snapshot(), before);
+  const accepted = await useDesk.getState().importDesk(raw, true);
+  assert.equal(accepted.ok, true);
+  assert.equal(useDesk.getState().decisions[0].outcomeLog.length >= 1, true);
+  const broken = "legacy-fixture-recovery-original";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await assert.rejects(() => recoverVerifiedBackup(raw), /legacy-unverified/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    await recoverVerifiedBackup(raw, true);
+    const restored = JSON.parse(indexed.data.get(DESK_KEY)).state;
+    assert.equal(restored.sha256, await hashJson(restored));
+    assert.ok(restored.decisions.some((d) => d.outcomeLog?.length));
+    assert.ok(restored.companySeals.some((s) => s.sha256));
+    assert.match(restored.tamperImportApprovals.at(-1).note, /phục hồi từ bản cũ chưa kiểm/u);
+    const quarantineKey = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantineKey);
+    assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
+  });
+});
+
+test("stage2 followup L-04: dual-quarantine failure rejects recovery and preserves exact bytes", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const broken = "original-corrupt-\u0000-unchanged";
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const originalSet = local.setItem;
+  local.setItem = (key, value) => {
+    if (key.startsWith(QUARANTINE_PREFIX)) throw new Error("QuotaExceededError");
+    return originalSet(key, value);
+  };
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    indexed.setFailWrites(true);
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Không cách ly được dữ liệu gốc/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(local.getItem(LEGACY_KEY), legacyEnvelope());
+    assert.equal([...indexed.data.keys()].filter((k) => k.startsWith(QUARANTINE_PREFIX)).length, 0);
+    assert.equal([...local.map.keys()].filter((k) => k.startsWith(QUARANTINE_PREFIX)).length, 0);
+  });
+});

@@ -191,7 +191,9 @@ function BookCopy() {
       // Backup is a required gate, not an optional UI prompt.
       const backup = await exportDesk();
       downloadBook(backup, backupFilename());
-      setMsg("Đã khởi động tải bản sao lưu. Đang kiểm tra file nhập.");
+      setMsg("Đã khởi động tải bản sao lưu.");
+      if (!window.confirm("Hãy kiểm tra tệp sao lưu đã lưu xong trên máy trước khi nhập. Xác nhận đã có tệp sao lưu?")) return;
+      setMsg("Đã xác nhận bản sao lưu. Đang kiểm tra file nhập.");
       const raw = await file.text();
       let result = await importDesk(raw, false);
       if (!result.ok && result.reason.includes("sha256:") &&

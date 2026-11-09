@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { useDesk } from "./store.ts";
-import { emptyQuality } from "./logic.ts";
 import { bookSchema, migrateBook } from "./schema.ts";
 import { canonicalJson, sha256Hex, hashJson, sealHash, verifyJsonHash } from "./hash.ts";
 import { durableStorage, LEGACY_KEY, DESK_KEY, FALLBACK_KEY, resetStorageForTest,
@@ -235,4 +234,54 @@ test("m) CI covers main, chinam/** pushes, PR to main and no redundant Stage1 in
   assert.match(yaml, /pull_request:/u);
   assert.match(yaml, /main/u);
   assert.doesNotMatch(yaml, /Stage 1 independent/u);
+});
+
+test("c2) migrated legacy decision gets one dated outcomeLog row with provenance", async () => {
+  const form = { security: "ABC", priceNote: "", action: "observe", thesisId: null,
+    expectedReturn: "", probabilityNote: "", risk: "", sizeNote: "", catalyst: "",
+    invalidation: "", alternativeView: "", override: false, overrideReason: "" };
+  assert.equal(useDesk.getState().addDecision(form).ok, true);
+  const exported = JSON.parse(await useDesk.getState().exportDesk());
+  delete exported.schemaVersion;
+  delete exported.sha256;
+  delete exported.decisions[0].outcomeLog;
+  delete exported.decisions[0].snapshotSha256;
+  delete exported.decisions[0].snapshotHashOrigin;
+  const result = await useDesk.getState().importDesk(JSON.stringify(exported));
+  assert.equal(result.ok, true);
+  const history = useDesk.getState().decisions[0].outcomeLog;
+  assert.equal(history.length, 1);
+  assert.equal(history[0].legacyNote, "chuyển từ bản cũ");
+});
+test("f2) store blocks mutation while browser hydration is incomplete", async () => {
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed();
+  await withBrowser(local, indexed.api, async () => {
+    const before = snapshot();
+    const result = useDesk.getState().createThesis();
+    assert.equal(result.ok, false);
+    assert.equal(snapshot(), before);
+    assert.equal(await durableStorage.getItem(DESK_KEY), local.getItem(LEGACY_KEY));
+  });
+});
+test("k2) nested seal mismatch is rejected despite an otherwise valid file-total hash", async () => {
+  const seal = await sealHash({ id: "seal", companyId: "co", filedAt: "2026-11-01", sealed: true,
+    name: "Cty A", venue: "HOSE", standard: "VAS", standardNote: "",
+    business: "", missingNote: "", facts: [], quality: {
+      receivables: { state: "open", note: "", source: "" },
+      inventory: { state: "open", note: "", source: "" },
+      accruals: { state: "open", note: "", source: "" },
+      capitalization: { state: "open", note: "", source: "" },
+      related: { state: "open", note: "", source: "" },
+      dilution: { state: "open", note: "", source: "" },
+      offbalance: { state: "open", note: "", source: "" },
+      auditor: { state: "open", note: "", source: "" },
+      cfo: { state: "open", note: "", source: "" },
+    } }, "created");
+  const valid = JSON.parse(await useDesk.getState().exportDesk());
+  valid.companySeals = [{ ...seal, name: "Cty B" }];
+  valid.sha256 = await hashJson(valid);
+  const rejected = await useDesk.getState().importDesk(JSON.stringify(valid));
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.reason, /sha256/u);
 });

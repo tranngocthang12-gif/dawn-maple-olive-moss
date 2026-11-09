@@ -1,6 +1,4 @@
 name: CHINAM CI
-env:
-  VITE_GROK_EXTENSIONS: '0'
 on:
   push:
     branches:
@@ -28,6 +26,8 @@ jobs:
           CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
       - name: Vite production build smoke (no DB migration)
+        env:
+          VITE_GROK_EXTENSIONS: '0'
         run: PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite build
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:

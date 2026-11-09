@@ -792,3 +792,91 @@ test("R2-F-04-j: queued stale writes cannot bypass conflict lock", async () => {
     assert.equal(storageSnapshot().ready, false);
   });
 });
+
+/** A shared IDB store with exclusive readwrite transactions, across connections. */
+function sharedSerializedCAS(initial) {
+  const data = new Map([[DESK_KEY, initial]]);
+  const queue = [];
+  let active = false;
+  let writes = 0;
+  const pump = () => {
+    if (active || queue.length === 0) return;
+    active = true;
+    const execute = queue.shift();
+    queueMicrotask(execute);
+  };
+  const connect = () => ({
+    transaction(_name, mode) {
+      assert.equal(mode, "readwrite");
+      const requests = [];
+      let pending = 0;
+      let settled = false;
+      const tx = { oncomplete: null, onerror: null, onabort: null, objectStore: () => store };
+      const done = () => {
+        if (pending !== 0 || settled) return;
+        settled = true;
+        queueMicrotask(() => {
+          tx.oncomplete?.();
+          active = false;
+          pump();
+        });
+      };
+      const store = {
+        get(key) {
+          pending++;
+          const req = { result: undefined, onsuccess: null, onerror: null };
+          requests.push({ key, req });
+          return req;
+        },
+        put(value, key) {
+          pending++;
+          queueMicrotask(() => {
+            data.set(key, value);
+            writes++;
+            pending--;
+            done();
+          });
+        },
+      };
+      queue.push(() => {
+        for (const { key, req } of requests) {
+          queueMicrotask(() => {
+            req.result = data.get(key);
+            req.onsuccess?.();
+            pending--;
+            done();
+          });
+        }
+      });
+      pump();
+      return tx;
+    },
+  });
+  return { connect, data, writes: () => writes };
+}
+test("R2-F-04-k: concurrent CAS from separate connections permits only tab A to commit", async () => {
+  const original = JSON.stringify({ bookVersion: 7, state: baseline() });
+  const db = sharedSerializedCAS(original);
+  const a = JSON.stringify({ bookVersion: 8, state: { ...baseline(), signoff: { a: true } } });
+  const b = JSON.stringify({ bookVersion: 8, state: { ...baseline(), signoff: { b: true } } });
+  const [aOK, bOK] = await Promise.all([
+    idbCompareAndSwap(db.connect(), DESK_KEY, original, a),
+    idbCompareAndSwap(db.connect(), DESK_KEY, original, b),
+  ]);
+  assert.deepEqual([aOK, bOK], [true, false]);
+  assert.equal(db.data.get(DESK_KEY), a);
+  assert.equal(db.writes(), 1);
+});
+test("R2-F-04-l: reversed concurrent CAS permits only tab B to commit", async () => {
+  const original = JSON.stringify({ bookVersion: 7, state: baseline() });
+  const db = sharedSerializedCAS(original);
+  const a = JSON.stringify({ bookVersion: 8, state: { ...baseline(), signoff: { a: true } } });
+  const b = JSON.stringify({ bookVersion: 8, state: { ...baseline(), signoff: { b: true } } });
+  const [bOK, aOK] = await Promise.all([
+    idbCompareAndSwap(db.connect(), DESK_KEY, original, b),
+    idbCompareAndSwap(db.connect(), DESK_KEY, original, a),
+  ]);
+  assert.deepEqual([bOK, aOK], [true, false]);
+  assert.equal(db.data.get(DESK_KEY), b);
+  assert.equal(db.writes(), 1);
+});

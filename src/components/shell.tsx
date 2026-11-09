@@ -171,7 +171,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
       {storage.mode === "fallback" ? (
         <aside role="status" className="border-b border-yellow-700 bg-yellow-100 px-4 py-3 text-sm text-yellow-950">
-          IndexedDB không khả dụng. Chế độ dự phòng chỉ đọc, không ghi sổ khi chưa có CAS.
+          Trình duyệt này không cho lưu sổ (thường do chế độ ẩn danh). Mọi thay đổi sẽ KHÔNG được lưu. Hãy mở bằng cửa sổ thường.
         </aside>
       ) : null}
       {storage.saveError ? (

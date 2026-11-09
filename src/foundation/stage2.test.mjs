@@ -185,6 +185,9 @@ test("h) missing indexedDB uses localStorage fallback and warns", async () => {
     assert.equal(storageSnapshot().ready, false);
     assert.equal(local.map.has(FALLBACK_KEY), false);
     assert.equal(local.map.get(LEGACY_KEY), raw);
+    // R-03 Owner decision: fallback is read-only; export remains possible.
+    const exported = await useDesk.getState().exportDesk();
+    assert.equal(JSON.parse(exported).schemaVersion, 2);
   });
 });
 test("i) a failed write raises persistent warning until a later successful write", async () => {
@@ -1001,4 +1004,21 @@ test("R2v2-R-07: CI uses production Vite build without database migration", () =
   assert.match(yaml, /run: node scripts\/with-app-env\.mjs vite build(?:\n|$)/u);
   assert.doesNotMatch(yaml, /run: npm run build:dev/u);
   assert.doesNotMatch(yaml, /run: npm run db:migrate/u);
+});
+
+test("R2v2-R-03: no IndexedDB is read-only, export remains available and clear warning exists", async () => {
+  const path = fileURLToPath(new URL("../components/shell.tsx", import.meta.url));
+  const shell = readFileSync(path, "utf8");
+  assert.match(shell, /Trình duyệt này không cho lưu sổ \(thường do chế độ ẩn danh\)/u);
+  assert.match(shell, /Mọi thay đổi sẽ KHÔNG được lưu/u);
+  assert.match(shell, /Hãy mở bằng cửa sổ thường/u);
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  await withBrowser(local, undefined, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), legacyEnvelope());
+    allowWritesAfterHydration();
+    assert.equal(storageSnapshot().readOnly, true);
+    assert.equal(storageSnapshot().ready, false);
+    assert.equal(JSON.parse(await useDesk.getState().exportDesk()).schemaVersion, 2);
+    assert.equal(local.getItem(FALLBACK_KEY), null);
+  });
 });

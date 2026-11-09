@@ -994,3 +994,11 @@ test("R2-F-04-m: native Chromium two-tab CAS allows exactly one winner", {
     await server.close();
   }
 });
+
+test("R2v2-R-07: CI uses production Vite build without database migration", () => {
+  const path = fileURLToPath(new URL("../../.github/workflows/chinam-stage1-verification.yml", import.meta.url));
+  const yaml = readFileSync(path, "utf8");
+  assert.match(yaml, /run: node scripts\/with-app-env\.mjs vite build(?:\n|$)/u);
+  assert.doesNotMatch(yaml, /run: npm run build:dev/u);
+  assert.doesNotMatch(yaml, /run: npm run db:migrate/u);
+});

@@ -23,8 +23,8 @@ jobs:
         run: npm run lint
       - name: Test
         run: npm test
-      - name: Vite build smoke (development mode; no DB migration)
-        run: npm run build:dev
+      - name: Vite production build smoke (no DB migration)
+        run: node scripts/with-app-env.mjs vite build
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

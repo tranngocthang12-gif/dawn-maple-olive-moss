@@ -62,6 +62,10 @@ function Desk() {
         <Stat k="Bản niêm phong và ảnh chụp khớp băm" v={integrity.matched} />
         <Stat k="Mã băm không khớp" v={integrity.mismatched} />
         <Stat k="Chưa có mã băm" v={integrity.missing} />
+        <Stat k="Băm sau, từ bản cũ" v={
+          companySeals.filter((s) => s.sha256Origin === "legacy-backfill").length +
+          decisions.filter((d) => d.snapshotHashOrigin === "legacy-backfill").length
+        } />
       </dl>
 
       <p className="mt-4 text-sm text-muted">

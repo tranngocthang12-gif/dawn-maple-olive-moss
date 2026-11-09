@@ -252,6 +252,7 @@ test("c2) migrated legacy decision gets one dated outcomeLog row with provenance
   const history = useDesk.getState().decisions[0].outcomeLog;
   assert.equal(history.length, 1);
   assert.equal(history[0].legacyNote, "chuyển từ bản cũ");
+  assert.equal(useDesk.getState().decisions[0].snapshotHashOrigin, "legacy-backfill");
 });
 test("f2) store blocks mutation while browser hydration is incomplete", async () => {
   const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });

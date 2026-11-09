@@ -177,6 +177,7 @@ export function JournalDesk() {
                 <Stamp>{actions.find((a) => a.id === d.action)?.label ?? d.action}</Stamp>
                 {d.override ? <Stamp tone="accent">Ghi đè</Stamp> : null}
                 {d.voided ? <Stamp tone="accent">Đã void</Stamp> : null}
+                {d.snapshotHashOrigin === "legacy-backfill" ? <Stamp tone="accent">Băm sau, từ bản cũ</Stamp> : null}
                 <Stamp>Quy trình {score.score}</Stamp>
               </div>
               <p className="mt-1 text-xs text-muted">{new Date(d.at).toLocaleString("vi-VN")} · điểm quy trình không phải xác suất đúng</p>

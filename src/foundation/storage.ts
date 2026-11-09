@@ -8,6 +8,42 @@ export const FALLBACK_KEY = "chinam-foundation-v2-fallback";
 export const DB_NAME = "chinam";
 export const DB_STORE = "desk";
 
+/** Quarantine entries never overwrite the active book or the legacy V1 key. */
+export const QUARANTINE_PREFIX = "chinam-recovery-quarantine-";
+export type RawRecoveryCopy = { source: string; raw: string };
+export async function readRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
+  if (typeof window === "undefined") throw new Error("Không có bộ nhớ trình duyệt.");
+  const copies: RawRecoveryCopy[] = [];
+  try {
+    const db = await idbOpen();
+    try {
+      const raw = await idbRead(db, DESK_KEY);
+      if (raw !== null) copies.push({ source: "indexeddb:" + DESK_KEY, raw });
+    } finally { db.close?.(); }
+  } catch (error) {
+    // Do not pretend a partial export is complete when IndexedDB cannot be read.
+    throw new Error("Không thể đọc dữ liệu thô IndexedDB: " + storageErrorText(error));
+  }
+  const local = requireLocal();
+  for (const key of [LEGACY_KEY, FALLBACK_KEY]) {
+    const raw = local.getItem(key);
+    if (raw !== null) copies.push({ source: "localStorage:" + key, raw });
+  }
+  return copies;
+}
+/** Quarantine all active raw copies before permitting any recovery write. */
+export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
+  const copies = await readRawRecoveryCopies();
+  if (copies.length === 0) return copies;
+  const local = requireLocal();
+  const key = QUARANTINE_PREFIX + new Date().toISOString() + "-" + Math.random().toString(36).slice(2);
+  const serialized = JSON.stringify(copies);
+  local.setItem(key, serialized);
+  if (local.getItem(key) !== serialized) throw new Error("Không xác minh được bản cách ly.");
+  return copies;
+}
+
+
 export type StorageMode = "loading" | "indexeddb" | "fallback" | "unavailable";
 export type StorageStatus = {
   ready: boolean;

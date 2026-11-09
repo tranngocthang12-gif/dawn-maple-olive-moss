@@ -1022,3 +1022,21 @@ test("R2v2-R-03: no IndexedDB is read-only, export remains available and clear w
     assert.equal(local.getItem(FALLBACK_KEY), null);
   });
 });
+
+test("R2v2-R-04: failed IndexedDB read still exports exact legacy localStorage bytes with error metadata", async () => {
+  const raw = legacyEnvelope();
+  const local = fakeLocal({ [LEGACY_KEY]: raw });
+  const indexed = fakeIndexed({ [DESK_KEY]: "unreadable-active" });
+  await withBrowser(local, indexed.api, async () => {
+    indexed.setFailReads(true);
+    const copies = await readRawRecoveryCopies();
+    const legacy = copies.find((item) => item.source === "localStorage:" + LEGACY_KEY);
+    assert.equal(legacy?.raw, raw);
+    const failure = copies.find((item) => item.source.startsWith("indexeddb: KHÔNG ĐỌC ĐƯỢC"));
+    assert.ok(failure, "download must retain explicit IndexedDB failure notice");
+    assert.equal(failure.raw, "");
+    await assert.rejects(() => quarantineRawRecoveryCopies(), /Không thể đọc dữ liệu thô IndexedDB/u);
+    assert.equal(indexed.data.get(DESK_KEY), "unreadable-active");
+    assert.equal(indexed.calls.length, 0);
+  });
+});

@@ -21,8 +21,9 @@ export async function readRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
       if (raw !== null) copies.push({ source: "indexeddb:" + DESK_KEY, raw });
     } finally { db.close?.(); }
   } catch (error) {
-    // Do not pretend a partial export is complete when IndexedDB cannot be read.
-    throw new Error("Không thể đọc dữ liệu thô IndexedDB: " + storageErrorText(error));
+    // Export remains available when localStorage is readable. Represent the
+    // IndexedDB failure explicitly; never invent missing IndexedDB bytes.
+    copies.push({ source: "indexeddb: KHÔNG ĐỌC ĐƯỢC — " + storageErrorText(error), raw: "" });
   }
   const local = requireLocal();
   for (const key of [LEGACY_KEY, FALLBACK_KEY]) {
@@ -35,6 +36,10 @@ export async function readRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
 export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> {
   const copies = await readRawRecoveryCopies();
   if (copies.length === 0) return copies;
+  // A partial export is permitted, but recovery must remain strictly
+  // fail-closed if the active IndexedDB record could not be read.
+  const unreadable = copies.find((copy) => copy.source.startsWith("indexeddb: KHÔNG ĐỌC ĐƯỢC"));
+  if (unreadable) throw new Error("Không thể đọc dữ liệu thô IndexedDB: " + unreadable.source);
   // Require a recoverable IndexedDB source: a legacy-only copy must not
   // authorize overwriting an unreadable active IndexedDB book.
   if (!copies.some((copy) => copy.source === "indexeddb:" + DESK_KEY)) {

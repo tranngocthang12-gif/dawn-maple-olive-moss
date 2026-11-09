@@ -71,7 +71,7 @@ test("d) a single edited character invalidates sha256 without Owner confirmation
   assert.equal(refused.ok, false);
   assert.match(refused.reason, /sha256/u);
   assert.equal(snapshot(), original);
-  const accepted = await useDesk.getState().importDesk(edited, true);
+  const accepted = await useDesk.getState().importDesk(edited, false, true);
   assert.equal(accepted.ok, true);
   assert.equal(useDesk.getState().tamperImportApprovals.length, 1);
   assert.match(useDesk.getState().tamperImportApprovals[0].note, /Vẫn nhập/u);
@@ -1112,4 +1112,29 @@ test("R2v2-R-05: imported forged approval is tagged and prior local consent is a
   const jsx = readFileSync(path, "utf8");
   assert.match(jsx, /Nhật ký từ file nhập/u);
   assert.match(jsx, /Xác nhận thực hiện trên máy này/u);
+});
+
+test("R2v2-R-06: legacy backup with invalid nested hash requires two independent confirmations", async () => {
+  const form = { security: "XYZ", priceNote: "", action: "observe", thesisId: null,
+    expectedReturn: "", probabilityNote: "", risk: "", sizeNote: "", catalyst: "",
+    invalidation: "", alternativeView: "", override: false, overrideReason: "" };
+  assert.equal(useDesk.getState().addDecision(form).ok, true);
+  const v1 = JSON.parse(await useDesk.getState().exportDesk());
+  delete v1.schemaVersion;
+  delete v1.sha256;
+  v1.decisions[0].snapshotSha256 = "a".repeat(64);
+  const raw = JSON.stringify(v1);
+  const none = await useDesk.getState().importDesk(raw, false, false);
+  assert.equal(none.ok, false);
+  assert.match(none.reason, /legacy-unverified/u);
+  const onlyLegacy = await useDesk.getState().importDesk(raw, true, false);
+  assert.equal(onlyLegacy.ok, false);
+  assert.match(onlyLegacy.reason, /sha256/u);
+  const onlyTamper = await useDesk.getState().importDesk(raw, false, true);
+  assert.equal(onlyTamper.ok, false);
+  assert.match(onlyTamper.reason, /legacy-unverified/u);
+  assert.equal((await useDesk.getState().importDesk(raw, true, true)).ok, true);
+  const local = useDesk.getState().tamperImportApprovals.filter((row) => row.source === "local");
+  assert.ok(local.some((row) => row.note.includes("bản cũ chưa kiểm")));
+  assert.ok(local.some((row) => row.note.includes("Vẫn nhập dù file đã bị sửa")));
 });

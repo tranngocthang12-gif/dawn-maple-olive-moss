@@ -200,14 +200,18 @@ function BookCopy() {
       if (!window.confirm("Hãy kiểm tra tệp sao lưu đã lưu xong trên máy trước khi nhập. Xác nhận đã có tệp sao lưu?")) return;
       setMsg("Đã xác nhận bản sao lưu. Đang kiểm tra file nhập.");
       const raw = await file.text();
-      let result = await importDesk(raw, false);
+      let acceptLegacy = false;
+      let acceptTamper = false;
+      let result = await importDesk(raw, acceptLegacy, acceptTamper);
       if (!result.ok && result.reason.startsWith("legacy-unverified:") &&
         window.confirm("File bản cũ không có mã băm, không kiểm được có bị sửa hay không — vẫn nhập?")) {
-        result = await importDesk(raw, true);
+        acceptLegacy = true;
+        result = await importDesk(raw, acceptLegacy, acceptTamper);
       }
       if (!result.ok && result.reason.includes("sha256:") &&
         window.confirm("Mã băm tổng hoặc mã băm ảnh chụp không khớp. Vẫn nhập dù file đã bị sửa?")) {
-        result = await importDesk(raw, true);
+        acceptTamper = true;
+        result = await importDesk(raw, acceptLegacy, acceptTamper);
       }
       setMsg(result.ok ? "Đã nhập sổ sau khi sao lưu. Giữ cả hai tệp." : result.reason);
     } catch (error) {

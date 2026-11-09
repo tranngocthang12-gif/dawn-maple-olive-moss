@@ -21,7 +21,9 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Test
+      - name: Test (including native Chromium; no skipped tests)
+        env:
+          CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
       - name: Vite production build smoke (no DB migration)
         run: node scripts/with-app-env.mjs vite build

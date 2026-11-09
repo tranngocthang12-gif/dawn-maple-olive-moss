@@ -105,7 +105,7 @@ type DeskState = {
   markSignalAlive: (id: string) => Result;
   killSignal: (id: string, reason: string) => Result;
   exportDesk: () => Promise<string>;
-  importDesk: (raw: string, acceptTamper?: boolean) => Promise<Result>;
+  importDesk: (raw: string, acceptLegacy?: boolean, acceptTamper?: boolean) => Promise<Result>;
   verifyIntegrity: () => Promise<{ matched: number; mismatched: number; missing: number }>;
 };
 
@@ -642,7 +642,7 @@ export const useDesk = create<DeskState>()(
         // Export is a pure snapshot: never write old state back after awaits.
         return JSON.stringify({ ...validated.book, sha256 }, null, 2);
       },
-      importDesk: async (raw, acceptTamper = false) => {
+      importDesk: async (raw, acceptLegacy = false, acceptTamper = false) => {
         if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể nhập." };
         try {
           let parsed: unknown;
@@ -650,7 +650,7 @@ export const useDesk = create<DeskState>()(
           catch { return { ok: false, reason: "root: Tệp không phải JSON hợp lệ." }; }
           const result = migrateBook(parsed);
           if (!result.ok) return { ok: false, reason: result.field + ": " + result.reason };
-          if (result.legacy && !acceptTamper) {
+          if (result.legacy && !acceptLegacy) {
             return { ok: false, reason: "legacy-unverified: File bản cũ không có mã băm, không kiểm được có bị sửa hay không — cần Owner xác nhận riêng trước khi nhập." };
           }
           const problem = tooBig(result.book);

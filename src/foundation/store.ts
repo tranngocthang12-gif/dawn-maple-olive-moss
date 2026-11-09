@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { approvalFromMismatch, migrateBook } from "./schema.ts";
+import { ensureHashes, hashJson, countIntegrity } from "./hash.ts";
+import { durableStorage, storageSnapshot, reportLoadFailure, registerHashSink } from "./storage.ts";
 import type {
   Amendment,
   BaseRate,
@@ -19,6 +22,7 @@ import type {
   Thesis,
   ThesisTexts,
   WorldObs,
+  TamperImportApproval,
 } from "./types.ts";
 import {
   caps,
@@ -47,6 +51,7 @@ type DeskState = {
   activeThesisId: string | null;
   ready: boolean;
   setReady: (v: boolean) => void;
+  tamperImportApprovals: TamperImportApproval[];
   createThesis: () => IdResult;
   createSuccessor: (id: string) => IdResult;
   invalidateThesis: (id: string, reason: string) => Result;
@@ -99,19 +104,14 @@ type DeskState = {
   patchSignal: (id: string, patch: Partial<Pick<Signal, "family" | "hypothesis" | "mechanism" | "lag" | "death" | "rights" | "rightsOk">>) => void;
   markSignalAlive: (id: string) => Result;
   killSignal: (id: string, reason: string) => Result;
-  exportDesk: () => string;
-  importDesk: (raw: string) => Result;
+  exportDesk: () => Promise<string>;
+  importDesk: (raw: string, acceptLegacy?: boolean, acceptTamper?: boolean) => Promise<Result>;
+  verifyIntegrity: () => Promise<{ matched: number; mismatched: number; missing: number }>;
 };
 
 function touch(t: Thesis, patch: Partial<Thesis>): Thesis {
   return { ...t, ...patch, updatedAt: new Date().toISOString() };
 }
-
-const memoryStorage = {
-  getItem: () => null as string | null,
-  setItem: () => {},
-  removeItem: () => {},
-};
 
 function emptyMandate(): Mandate {
   return {
@@ -131,7 +131,7 @@ function emptyMandate(): Mandate {
 
 type Persisted = Pick<
   DeskState,
-  "theses" | "decisions" | "ledger" | "signoff" | "activeThesisId" | "mandate" | "world" | "baseRates" | "companies" | "companySeals" | "signals"
+  "theses" | "decisions" | "ledger" | "signoff" | "activeThesisId" | "mandate" | "world" | "baseRates" | "companies" | "companySeals" | "signals" | "tamperImportApprovals"
 >;
 
 type LegacyThesis = Omit<Partial<Thesis>, "status" | "checks"> & {
@@ -173,6 +173,7 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
   let seals = (p.companySeals ?? []).map((s) => ({
     ...s,
     sealed: s.sealed !== false,
+    ...(!s.sha256 ? { sha256Origin: s.sha256Origin ?? "legacy-backfill" as const } : {}),
     facts: s.facts ?? [],
     quality: { ...emptyQuality(), ...(s.quality ?? {}) },
   }));
@@ -192,14 +193,26 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
     }
     return file;
   });
-  const decisions = (p.decisions ?? []).map((d) => ({
-    ...d,
-    thesisSnapshot: d.thesisSnapshot ? normalizeThesis(d.thesisSnapshot as LegacyThesis) : null,
-    companySeal: d.companySeal ?? null,
-    worldSnapshot: d.worldSnapshot ?? [],
-    baseRateSnapshot: d.baseRateSnapshot ?? null,
-    amendments: d.amendments ?? [],
-  }));
+  const decisions = (p.decisions ?? []).map((d) => {
+    const history = d.outcomeLog ?? [{
+      at: d.at, outcome: d.outcome, postMortemClass: d.postMortemClass,
+      postMortemNote: d.postMortemNote, legacyNote: "chuyển từ bản cũ" as const,
+    }];
+    const latest = history[history.length - 1];
+    return {
+      ...d,
+      ...(latest ? { outcome: latest.outcome, postMortemClass: latest.postMortemClass, postMortemNote: latest.postMortemNote } : {}),
+      thesisSnapshot: d.thesisSnapshot ? normalizeThesis(d.thesisSnapshot as LegacyThesis) : null,
+      companySeal: d.companySeal
+        ? { ...d.companySeal, ...(!d.companySeal.sha256 ? { sha256Origin: d.companySeal.sha256Origin ?? "legacy-backfill" as const } : {}) }
+        : null,
+      ...(!d.snapshotSha256 ? { snapshotHashOrigin: d.snapshotHashOrigin ?? "legacy-backfill" as const } : {}),
+      worldSnapshot: d.worldSnapshot ?? [],
+      baseRateSnapshot: d.baseRateSnapshot ?? null,
+      amendments: d.amendments ?? [],
+      outcomeLog: history,
+    };
+  });
   return {
     theses,
     decisions,
@@ -212,6 +225,7 @@ function normalizePersisted(p: Partial<Persisted>): Persisted {
     companies,
     companySeals: seals,
     signals: p.signals ?? [],
+    tamperImportApprovals: p.tamperImportApprovals ?? [],
   };
 }
 
@@ -274,7 +288,12 @@ function editablePatch(patch: Partial<Thesis>): Partial<Thesis> {
 
 export const useDesk = create<DeskState>()(
   persist<DeskState, [], [], Persisted>(
-    (set, get) => ({
+    (set, get) => {
+      const commit = (partial: Partial<DeskState> | ((state: DeskState) => Partial<DeskState>)) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return;
+        set(partial);
+      };
+      return ({
       theses: [],
       decisions: [],
       ledger: [],
@@ -286,24 +305,28 @@ export const useDesk = create<DeskState>()(
       companies: [],
       companySeals: [],
       signals: [],
+      tamperImportApprovals: [],
       ready: false,
       setReady: (v) => set({ ready: v }),
       createThesis: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().theses.length >= caps.theses) return { ok: false, reason: fullBook };
         const thesis = freshThesis();
-        set((s) => ({ theses: [thesis, ...s.theses], activeThesisId: thesis.id }));
+        commit((s) => ({ theses: [thesis, ...s.theses], activeThesisId: thesis.id }));
         return { ok: true, id: thesis.id };
       },
       createSuccessor: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const prior = get().theses.find((t) => t.id === id);
         if (!prior) return { ok: false, reason: "Không thấy thesis gốc." };
         if (prior.status !== "invalidated") return { ok: false, reason: "Chỉ thesis đã hủy mới được tạo thesis kế tiếp." };
         if (get().theses.length >= caps.theses) return { ok: false, reason: fullBook };
         const next = freshThesis(prior.id);
-        set((s) => ({ theses: [next, ...s.theses], activeThesisId: next.id }));
+        commit((s) => ({ theses: [next, ...s.theses], activeThesisId: next.id }));
         return { ok: true, id: next.id };
       },
       invalidateThesis: (id, reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const thesis = get().theses.find((t) => t.id === id);
         if (!thesis) return { ok: false, reason: "Không thấy thesis." };
         if (thesis.status === "invalidated") return { ok: false, reason: "Thesis này đã hủy và chỉ đọc." };
@@ -311,7 +334,7 @@ export const useDesk = create<DeskState>()(
         if (trimmed.length < 12) return { ok: false, reason: "Hủy thesis cần lý do tối thiểu 12 ký tự." };
         const at = new Date().toISOString();
         const amendment: Amendment = { id: newId(), at, note: `Hủy thesis: ${trimmed}` };
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id
               ? { ...t, status: "invalidated", updatedAt: at, amendments: [...(t.amendments ?? []), amendment] }
@@ -321,18 +344,18 @@ export const useDesk = create<DeskState>()(
         return { ok: true };
       },
       updateThesis: (id, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) => (t.id === id && t.status !== "invalidated" ? touch(t, editablePatch(patch)) : t)),
         })),
       patchText: (id, key, value) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" ? touch(t, { texts: { ...t.texts, [key]: value } }) : t,
           ),
         })),
-      setActive: (id) => set({ activeThesisId: id }),
+      setActive: (id) => commit({ activeThesisId: id }),
       addClaim: (id) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, {
@@ -345,7 +368,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       updateClaim: (id, claimId, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { claims: t.claims.map((c) => (c.id === claimId ? { ...c, ...patch } : c)) })
@@ -353,13 +376,13 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       removeClaim: (id, claimId) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" ? touch(t, { claims: t.claims.filter((c) => c.id !== claimId) }) : t,
           ),
         })),
       addKill: (id) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { kills: [...t.kills, { id: newId(), text: "", threshold: "" }] })
@@ -367,7 +390,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       updateKill: (id, killId, patch) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated"
               ? touch(t, { kills: t.kills.map((k) => (k.id === killId ? { ...k, ...patch } : k)) })
@@ -375,7 +398,7 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       removeKill: (id, killId) =>
-        set((s) => ({
+        commit((s) => ({
           theses: s.theses.map((t) =>
             t.id === id && t.status !== "invalidated" && t.kills.length > 3
               ? touch(t, { kills: t.kills.filter((k) => k.id !== killId) })
@@ -383,11 +406,16 @@ export const useDesk = create<DeskState>()(
           ),
         })),
       addLedger: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().ledger.length >= caps.ledger) return { ok: false, reason: fullBook };
-        set((s) => ({ ledger: [{ ...row, id: newId(), at: new Date().toISOString() }, ...s.ledger] }));
+        commit((s) => ({ ledger: [{ ...row, id: newId(), at: new Date().toISOString() }, ...s.ledger] }));
         return { ok: true };
       },
       addDecision: (input) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
+        if (input.override && input.overrideReason.trim().length < 12) {
+          return { ok: false, reason: "Ghi đè cần lý do tối thiểu 12 ký tự, kể cả khi thesis đã hủy." };
+        }
         const thesis = input.thesisId ? get().theses.find((t) => t.id === input.thesisId) ?? null : null;
         if (input.action === "paper" || input.action === "hold" || input.action === "kill") {
           if (!thesis) return { ok: false, reason: "Hành động này cần một thesis." };
@@ -406,9 +434,6 @@ export const useDesk = create<DeskState>()(
             });
             if (blockers.length > 0 && !input.override) {
               return { ok: false, reason: `Thesis chưa sẵn sàng: ${blockers[0]}` };
-            }
-            if (input.override && input.overrideReason.trim().length < 12) {
-              return { ok: false, reason: "Ghi đè cần lý do cụ thể. Không ghi đè im lặng." };
             }
           }
         }
@@ -449,69 +474,81 @@ export const useDesk = create<DeskState>()(
           outcome: "pending",
           postMortemClass: "",
           postMortemNote: "",
+          outcomeLog: [{ at: new Date().toISOString(), outcome: "pending", postMortemClass: "", postMortemNote: "" }],
+          snapshotHashOrigin: "created",
           override: input.override,
           overrideReason: input.overrideReason,
           voided: false,
           voidReason: "",
           amendments: [],
         };
-        set((s) => ({ decisions: [decision, ...s.decisions] }));
+        commit((s) => ({ decisions: [decision, ...s.decisions] }));
         return { ok: true };
       },
       patchOutcome: (id, patch) =>
-        set((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, ...patch } : d)) })),
+        commit((s) => ({ decisions: s.decisions.map((d) => {
+          if (d.id !== id) return d;
+          const at = new Date().toISOString();
+          const log = { at, ...patch };
+          return { ...d, ...patch, outcomeLog: [...(d.outcomeLog ?? []), log] };
+        }) })),
       amend: (id, note) => {
         const trimmed = note.trim();
         if (trimmed.length < 8) return;
         const amendment: Amendment = { id: newId(), at: new Date().toISOString(), note: trimmed };
-        set((s) => ({
+        commit((s) => ({
           decisions: s.decisions.map((d) => (d.id === id ? { ...d, amendments: [...d.amendments, amendment] } : d)),
         }));
       },
       voidDecision: (id, reason) => {
         if (reason.trim().length < 12) return;
-        set((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, voided: true, voidReason: reason.trim() } : d)) }));
+        commit((s) => ({ decisions: s.decisions.map((d) => (d.id === id ? { ...d, voided: true, voidReason: reason.trim() } : d)) }));
       },
-      toggleSignoff: (key) => set((s) => ({ signoff: { ...s.signoff, [key]: !s.signoff[key] } })),
+      toggleSignoff: (key) => commit((s) => ({ signoff: { ...s.signoff, [key]: !s.signoff[key] } })),
       patchMandate: (patch) =>
-        set((s) => {
+        commit((s) => {
           if (s.mandate.locked) return s;
           return { mandate: { ...s.mandate, ...patch, locked: false, amendments: s.mandate.amendments } };
         }),
       lockMandate: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const m = get().mandate;
         if (m.locked) return { ok: false, reason: "Ủy thác đã khóa." };
         if (m.currency.trim().length < 2 || m.horizon.trim().length < 2) return { ok: false, reason: "Cần tiền tệ tiêu dùng và chân trời." };
         if (m.universeInner.trim().length < 12) return { ok: false, reason: "Vành trong cần một mô tả cụ thể, không phải một chữ." };
         if (m.leverage === "capped" && m.leverageNote.trim().length < 8) return { ok: false, reason: "Đòn bẩy có trần thì phải ghi trần đó." };
-        set((s) => ({ mandate: { ...s.mandate, locked: true, lockedAt: new Date().toISOString() } }));
+        commit((s) => ({ mandate: { ...s.mandate, locked: true, lockedAt: new Date().toISOString() } }));
         return { ok: true };
       },
       unlockMandate: (reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (reason.trim().length < 12) return { ok: false, reason: "Mở khóa cần lý do. Đây là ghi đè." };
         const note: Amendment = { id: newId(), at: new Date().toISOString(), note: `Mở khóa: ${reason.trim()}` };
-        set((s) => ({ mandate: { ...s.mandate, locked: false, amendments: [...s.mandate.amendments, note] } }));
+        commit((s) => ({ mandate: { ...s.mandate, locked: false, amendments: [...s.mandate.amendments, note] } }));
         return { ok: true };
       },
       addWorld: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.name.trim().length < 2 || row.geography.trim().length < 2) return { ok: false, reason: "Cần tên chỉ tiêu và địa lý." };
         if (![row.level, row.delta, row.acceleration].some((x) => x.trim())) return { ok: false, reason: "Cần ít nhất một trong ba: mức, tốc độ đổi, gia tốc." };
         if (!recordUsable(row)) return { ok: false, reason: "Quan sát thế giới chỉ vào sổ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         if (get().world.length >= caps.world) return { ok: false, reason: fullBook };
         const obs: WorldObs = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ world: [obs, ...s.world] }));
+        commit((s) => ({ world: [obs, ...s.world] }));
         return { ok: true };
       },
       addBaseRate: (row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.name.trim().length < 2 || row.event.trim().length < 12 || row.rateNote.trim().length < 2) return { ok: false, reason: "Cần tên, định nghĩa sự kiện, và con số kèm mẫu." };
         if (row.caveat.trim().length < 12) return { ok: false, reason: "Base rate phải ghi giới hạn: nơi, thời, và cái nó không nói." };
         if (!recordUsable(row)) return { ok: false, reason: "Base rate cần nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         if (get().baseRates.length >= caps.baseRates) return { ok: false, reason: fullBook };
         const rate: BaseRate = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ baseRates: [rate, ...s.baseRates] }));
+        commit((s) => ({ baseRates: [rate, ...s.baseRates] }));
         return { ok: true };
       },
       createCompany: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().companies.length >= caps.companies) return { ok: false, reason: fullBook };
         const id = newId();
         const now = new Date().toISOString();
@@ -530,22 +567,24 @@ export const useDesk = create<DeskState>()(
           quality: emptyQuality(),
           sealId: "",
         };
-        set((s) => ({ companies: [file, ...s.companies] }));
+        commit((s) => ({ companies: [file, ...s.companies] }));
         return { ok: true, id };
       },
-      patchCompany: (id, patch) => set((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, ...patch, status: "draft", updatedAt: new Date().toISOString() } : c)) })),
+      patchCompany: (id, patch) => commit((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, ...patch, status: "draft", updatedAt: new Date().toISOString() } : c)) })),
       addCompanyFact: (id, row) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (row.text.trim().length < 2) return { ok: false, reason: "Sự kiện trống." };
         if (!recordUsable(row)) return { ok: false, reason: "Sự kiện doanh nghiệp chỉ vào hồ sơ khi có nguồn tầng 1 hoặc 2, ngày, và được phép dùng." };
         const file = get().companies.find((c) => c.id === id);
         if (!file) return { ok: false, reason: "Không thấy hồ sơ doanh nghiệp." };
         if (file.facts.length >= caps.facts) return { ok: false, reason: fullBook };
         const fact: CompanyFact = { ...row, id: newId(), at: new Date().toISOString() };
-        set((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, facts: [fact, ...c.facts], status: "draft", updatedAt: fact.at } : c)) }));
+        commit((s) => ({ companies: s.companies.map((c) => (c.id === id ? { ...c, facts: [fact, ...c.facts], status: "draft", updatedAt: fact.at } : c)) }));
         return { ok: true };
       },
-      setQuality: (id, key, patch) => set((s) => ({ companies: s.companies.map((c) => c.id === id ? { ...c, status: "draft", updatedAt: new Date().toISOString(), quality: { ...c.quality, [key]: { ...c.quality[key], ...patch } } } : c) })),
+      setQuality: (id, key, patch) => commit((s) => ({ companies: s.companies.map((c) => c.id === id ? { ...c, status: "draft", updatedAt: new Date().toISOString(), quality: { ...c.quality, [key]: { ...c.quality[key], ...patch } } } : c) })),
       fileCompany: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const file = get().companies.find((c) => c.id === id);
         if (!file) return { ok: false, reason: "Không thấy hồ sơ doanh nghiệp." };
         const issues = companyFileIssues(file);
@@ -553,60 +592,120 @@ export const useDesk = create<DeskState>()(
         if (file.status === "filed") return { ok: false, reason: "Bản này đã đóng. Gõ sửa nếu bạn muốn viết bản nháp mới, rồi nộp lại." };
         if (get().companySeals.length >= caps.seals) return { ok: false, reason: fullBook };
         const filedAt = new Date().toISOString();
-        const seal = sealFromCompany({ ...file, updatedAt: filedAt }, filedAt, newId(), true);
-        set((s) => ({ companySeals: [seal, ...s.companySeals], companies: s.companies.map((c) => (c.id === id ? { ...c, status: "filed", sealId: seal.id, updatedAt: filedAt } : c)) }));
+        const seal = { ...sealFromCompany({ ...file, updatedAt: filedAt }, filedAt, newId(), true), sha256Origin: "created" as const };
+        commit((s) => ({ companySeals: [seal, ...s.companySeals], companies: s.companies.map((c) => (c.id === id ? { ...c, status: "filed", sealId: seal.id, updatedAt: filedAt } : c)) }));
         return { ok: true };
       },
       createSignal: () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         if (get().signals.length >= caps.signals) return { ok: false, reason: fullBook };
         const id = newId();
         const now = new Date().toISOString();
         const row: Signal = { id, at: now, updatedAt: now, family: "", hypothesis: "", mechanism: "", lag: "", death: "", rights: "", rightsOk: false, status: "draft", diedAt: "", deathReason: "" };
-        set((s) => ({ signals: [row, ...s.signals] }));
+        commit((s) => ({ signals: [row, ...s.signals] }));
         return { ok: true, id };
       },
-      patchSignal: (id, patch) => set((s) => ({ signals: s.signals.map((row) => row.id === id && row.status === "draft" ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row) })),
+      patchSignal: (id, patch) => commit((s) => ({ signals: s.signals.map((row) => row.id === id && row.status === "draft" ? { ...row, ...patch, updatedAt: new Date().toISOString() } : row) })),
       markSignalAlive: (id) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const row = get().signals.find((s) => s.id === id);
         if (!row) return { ok: false, reason: "Không thấy tín hiệu." };
         if (row.status === "dead") return { ok: false, reason: "Tín hiệu đã chết không được hồi sinh. Mở một dòng mới." };
         if (row.status === "alive") return { ok: false, reason: "Tín hiệu này đang sống." };
         const issues = signalAliveIssues(row);
         if (issues.length) return { ok: false, reason: issues[0] };
-        set((s) => ({ signals: s.signals.map((item) => (item.id === id ? { ...item, status: "alive", updatedAt: new Date().toISOString() } : item)) }));
+        commit((s) => ({ signals: s.signals.map((item) => (item.id === id ? { ...item, status: "alive", updatedAt: new Date().toISOString() } : item)) }));
         return { ok: true };
       },
       killSignal: (id, reason) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể ghi." };
         const row = get().signals.find((s) => s.id === id);
         if (!row) return { ok: false, reason: "Không thấy tín hiệu." };
         if (row.status === "dead") return { ok: false, reason: "Tín hiệu này đã chết." };
         if (reason.trim().length < 12) return { ok: false, reason: "Khai tử cần lý do. Giữ vì đã tốn công không phải lý do." };
         const at = new Date().toISOString();
-        set((s) => ({ signals: s.signals.map((item) => item.id === id ? { ...item, status: "dead", diedAt: at, deathReason: reason.trim(), updatedAt: at } : item) }));
+        commit((s) => ({ signals: s.signals.map((item) => item.id === id ? { ...item, status: "dead", diedAt: at, deathReason: reason.trim(), updatedAt: at } : item) }));
         return { ok: true };
       },
-      exportDesk: () => JSON.stringify(normalizePersisted(get()), null, 2),
-      importDesk: (raw) => {
-        let parsed: unknown;
+      verifyIntegrity: async () => {
+        try { return await countIntegrity(get().companySeals, get().decisions); }
+        catch { return { matched: 0, mismatched: 0, missing: get().companySeals.length + get().decisions.length }; }
+      },
+      exportDesk: async () => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready && !storageSnapshot().conflict && !storageSnapshot().readOnly) throw new Error("Đang mở sổ; không thể xuất bản chưa nạp.");
+        const state = normalizePersisted(get());
+        const hashed = await ensureHashes(state, "legacy-backfill");
+        const payload = { schemaVersion: 2 as const, ...hashed };
+        const validated = migrateBook(payload);
+        if (!validated.ok) throw new Error("Sổ không thể xuất: " + validated.field + " — " + validated.reason);
+        const sha256 = await hashJson(validated.book);
+        // Export is a pure snapshot: never write old state back after awaits.
+        return JSON.stringify({ ...validated.book, sha256 }, null, 2);
+      },
+      importDesk: async (raw, acceptLegacy = false, acceptTamper = false) => {
+        if (typeof window !== "undefined" && !storageSnapshot().ready) return { ok: false, reason: "Đang mở sổ; không thể nhập." };
         try {
-          parsed = JSON.parse(raw);
-        } catch {
-          return { ok: false, reason: "Tệp này không đọc được." };
+          let parsed: unknown;
+          try { parsed = JSON.parse(raw); }
+          catch { return { ok: false, reason: "root: Tệp không phải JSON hợp lệ." }; }
+          const result = migrateBook(parsed);
+          if (!result.ok) return { ok: false, reason: result.field + ": " + result.reason };
+          if (result.legacy && !acceptLegacy) {
+            return { ok: false, reason: "legacy-unverified: File bản cũ không có mã băm, không kiểm được có bị sửa hay không — cần Owner xác nhận riêng trước khi nhập." };
+          }
+          const problem = tooBig(result.book);
+          if (problem) return { ok: false, reason: problem };
+          const expected = result.book.sha256 ?? "";
+          const actual = await hashJson(result.book as Record<string, unknown>);
+          const hasMismatch = !!expected && expected !== actual;
+          if (!result.legacy && !expected) {
+            return { ok: false, reason: "sha256: File phiên bản 2 thiếu mã băm tổng." };
+          }
+          const integrity = await countIntegrity(result.book.companySeals, result.book.decisions);
+          const mismatch = integrity.mismatched > 0;
+          if (!result.legacy && integrity.missing > 0) {
+            return { ok: false, reason: "sha256: File phiên bản 2 thiếu mã băm của bản niêm phong hoặc ảnh chụp." };
+          }
+          if ((hasMismatch || mismatch) && !acceptTamper) {
+            return { ok: false, reason: "sha256: Mã băm không khớp. File có thể đã bị sửa. Chỉ Owner được xác nhận Vẫn nhập dù file đã bị sửa." };
+          }
+          const upgraded = result.legacy ? await ensureHashes(result.book, "legacy-backfill") : result.book;
+          // All approvals embedded in an incoming file are untrusted imported
+          // history, even if their source field falsely claims "local".
+          const incoming = upgraded.tamperImportApprovals.map((row) => ({
+            ...row, source: "imported" as const,
+          }));
+          const newlyApproved = [
+            ...(result.legacy ? [{
+              at: new Date().toISOString(), note: "bản cũ chưa kiểm — Owner xác nhận nhập",
+              expectedHash: "", observedHash: "", source: "local" as const,
+            }] : []),
+            ...(hasMismatch || mismatch ? [{
+              ...approvalFromMismatch(expected, actual), source: "local" as const,
+            }] : []),
+          ];
+          // Append the local audit history instead of replacing it with a
+          // foreign file. Read the latest state at commit to avoid races.
+          commit((current) => normalizePersisted({
+            ...upgraded,
+            tamperImportApprovals: [
+              ...current.tamperImportApprovals.map((row) => ({
+                ...row, source: row.source ?? ("local" as const),
+              })),
+              ...incoming,
+              ...newlyApproved,
+            ],
+          }));
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, reason: "Không thể nhập sổ: " + (error instanceof Error ? error.message : String(error)) };
         }
-        if (!parsed || typeof parsed !== "object") return { ok: false, reason: "Tệp này không phải sổ của bàn làm việc." };
-        const body = parsed as Partial<Persisted>;
-        const known = ["theses", "decisions", "ledger", "mandate", "world", "baseRates", "companies", "companySeals", "signals", "signoff"] as const;
-        if (!known.some((key) => key in body)) return { ok: false, reason: "Tệp này không phải sổ CHỈNAM." };
-        const next = normalizePersisted(body);
-        const problem = tooBig(next);
-        if (problem) return { ok: false, reason: problem };
-        set(next);
-        return { ok: true };
       },
-    }),
+      });
+    },
     {
-      name: "chinam-foundation-v1",
-      storage: createJSONStorage(() => (typeof window === "undefined" ? memoryStorage : window.localStorage)),
+      name: "chinam-foundation-v2",
+      storage: createJSONStorage(() => durableStorage),
       skipHydration: true,
       partialize: (s): Persisted => ({
         theses: s.theses,
@@ -620,8 +719,45 @@ export const useDesk = create<DeskState>()(
         companies: s.companies,
         companySeals: s.companySeals,
         signals: s.signals,
+        tamperImportApprovals: s.tamperImportApprovals,
       }),
       merge: (persisted, current) => ({ ...current, ...normalizePersisted((persisted ?? {}) as Partial<Persisted>) }),
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) reportLoadFailure(error);
+      },
     },
   ),
 );
+/** Synchronize newly generated Web Crypto hashes into memory after verified disk writes.
+ * Never repair an existing hash, including a mismatched one.
+ */
+registerHashSink((book) => {
+  if (!storageSnapshot().ready) return;
+  const current = useDesk.getState();
+  const sealsById = new Map(book.companySeals.map((seal) => [seal.id, seal]));
+  const decisionsById = new Map(book.decisions.map((d) => [d.id, d]));
+  let changed = false;
+  const companySeals = current.companySeals.map((seal) => {
+    const persisted = sealsById.get(seal.id);
+    if (seal.sha256 || !persisted?.sha256) return seal;
+    changed = true;
+    return { ...seal, sha256: persisted.sha256, sha256Origin: persisted.sha256Origin };
+  });
+  const decisions = current.decisions.map((decision) => {
+    const persisted = decisionsById.get(decision.id);
+    if (!persisted) return decision;
+    let companySeal = decision.companySeal;
+    if (companySeal && !companySeal.sha256 && persisted.companySeal?.sha256) {
+      companySeal = { ...companySeal, sha256: persisted.companySeal.sha256,
+        sha256Origin: persisted.companySeal.sha256Origin };
+      changed = true;
+    }
+    if (!decision.snapshotSha256 && persisted.snapshotSha256) {
+      changed = true;
+      return { ...decision, companySeal, snapshotSha256: persisted.snapshotSha256,
+        snapshotHashOrigin: persisted.snapshotHashOrigin };
+    }
+    return companySeal === decision.companySeal ? decision : { ...decision, companySeal };
+  });
+  if (changed) useDesk.setState({ decisions, companySeals });
+});

@@ -77,6 +77,15 @@ export type ThesisTexts = {
 };
 
 export type Amendment = { id: string; at: string; note: string };
+export type HashOrigin = "created" | "legacy-backfill";
+export type OutcomeLogRow = {
+  at: string;
+  outcome: Decision["outcome"];
+  postMortemClass: PostMortemClass;
+  postMortemNote: string;
+  legacyNote?: "chuyển từ bản cũ";
+};
+export type TamperImportApproval = { at: string; note: string; expectedHash: string; observedHash: string; source?: "local" | "imported" };
 
 export type ThesisStatus = "invalidated";
 export type ThesisReadiness = "draft" | "ready" | "thin-ready" | "invalidated";
@@ -140,6 +149,9 @@ export type Decision = {
   outcome: "" | "pending" | "process-good-outcome-good" | "process-good-outcome-bad" | "process-bad-outcome-good" | "process-bad-outcome-bad";
   postMortemClass: PostMortemClass;
   postMortemNote: string;
+  outcomeLog: OutcomeLogRow[];
+  snapshotSha256?: string;
+  snapshotHashOrigin?: HashOrigin;
   override: boolean;
   overrideReason: string;
   voided: boolean;
@@ -269,6 +281,8 @@ export type CompanySeal = {
   missingNote: string;
   facts: CompanyFact[];
   quality: Record<QualityId, QualityRow>;
+  sha256?: string;
+  sha256Origin?: HashOrigin;
 };
 
 export type SignalStatus = "draft" | "alive" | "dead";

@@ -1,9 +1,12 @@
-name: CHINAM Foundation Stage 1 verification
+name: CHINAM CI
 on:
   push:
     branches:
-      - chinam/stage1-gate-repair
-  workflow_dispatch:
+      - main
+      - 'chinam/**'
+  pull_request:
+    branches:
+      - main
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -18,12 +21,13 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Test (run even if lint fails, to collect independent evidence)
-        if: always()
+      - name: Test (including native Chromium; no skipped tests)
+        env:
+          CHINAM_REAL_BROWSER_TEST: '1'
         run: npm test
-      - name: Stage 1 independent lint (without unrelated baseline files)
-        if: always()
-        run: npx eslint src/foundation/logic.ts src/foundation/store.ts src/foundation/types.ts src/foundation/stage1.test.mjs src/components/thesis-desk.tsx src/components/journal-desk.tsx src/routes/index.tsx
-      - name: Stage 1 independent regression (even when legacy global tests fail)
-        if: always()
-        run: node --experimental-strip-types --test src/foundation/stage1.test.mjs
+      - name: Vite production build smoke (no DB migration)
+        run: PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite build
+      - name: F-04 native Chromium two-tab IndexedDB CAS
+        env:
+          CHINAM_REAL_BROWSER_TEST: '1'
+        run: node --experimental-strip-types --test --test-name-pattern 'R2-F-04-m' src/foundation/stage2.test.mjs

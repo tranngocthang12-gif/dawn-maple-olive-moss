@@ -57,6 +57,7 @@ export function JournalDesk() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [voids, setVoids] = useState<Record<string, string>>({});
   const [voidFor, setVoidFor] = useState<string | null>(null);
+  const [postMortemDrafts, setPostMortemDrafts] = useState<Record<string, string>>({});
 
   function set<K extends keyof typeof empty>(key: K, value: (typeof empty)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -177,6 +178,7 @@ export function JournalDesk() {
                 <Stamp>{actions.find((a) => a.id === d.action)?.label ?? d.action}</Stamp>
                 {d.override ? <Stamp tone="accent">Ghi đè</Stamp> : null}
                 {d.voided ? <Stamp tone="accent">Đã void</Stamp> : null}
+                {d.snapshotHashOrigin === "legacy-backfill" ? <Stamp tone="accent">Băm sau, từ bản cũ</Stamp> : null}
                 <Stamp>Quy trình {score.score}</Stamp>
               </div>
               <p className="mt-1 text-xs text-muted">{new Date(d.at).toLocaleString("vi-VN")} · điểm quy trình không phải xác suất đúng</p>
@@ -244,10 +246,34 @@ export function JournalDesk() {
               <Field label="Ghi chú mổ">
                 <textarea
                   className={areaClass}
-                  value={d.postMortemNote}
-                  onChange={(e) => patchOutcome(d.id, { outcome: d.outcome, postMortemClass: d.postMortemClass, postMortemNote: e.target.value })}
+                  value={postMortemDrafts[d.id] ?? d.postMortemNote}
+                  onChange={(e) => setPostMortemDrafts((drafts) => ({ ...drafts, [d.id]: e.target.value }))}
+                  onBlur={() => {
+                    const draft = postMortemDrafts[d.id];
+                    if (draft !== undefined && draft !== d.postMortemNote) {
+                      patchOutcome(d.id, { outcome: d.outcome, postMortemClass: d.postMortemClass, postMortemNote: draft });
+                    }
+                    setPostMortemDrafts((drafts) => {
+                      const nextDrafts = { ...drafts };
+                      delete nextDrafts[d.id];
+                      return nextDrafts;
+                    });
+                  }}
                 />
               </Field>
+              <details className="mt-3 border-t border-line pt-3">
+                <summary className="cursor-pointer text-sm">Lịch sử kết quả và hậu kiểm ({d.outcomeLog?.length ?? 0} dòng)</summary>
+                <ol className="mt-2 space-y-2 text-xs text-muted">
+                  {(d.outcomeLog ?? []).map((entry, index) => (
+                    <li key={index} className="border-l border-line pl-3">
+                      <time>{new Date(entry.at).toLocaleString("vi-VN")}</time>
+                      <div>Kết quả: {entry.outcome || "Chưa có"} · Cửa sai: {entry.postMortemClass || "Chưa phân loại"}</div>
+                      <p className="whitespace-pre-wrap">{entry.postMortemNote || "Chưa ghi chú"}</p>
+                      {entry.legacyNote ? <span>({entry.legacyNote})</span> : null}
+                    </li>
+                  ))}
+                </ol>
+              </details>
               {d.amendments.length > 0 ? (
                 <ul className="mt-3 space-y-2">
                   {d.amendments.map((a) => (

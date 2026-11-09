@@ -38,8 +38,12 @@ export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> 
   const local = requireLocal();
   const key = QUARANTINE_PREFIX + new Date().toISOString() + "-" + Math.random().toString(36).slice(2);
   const serialized = JSON.stringify(copies);
-  local.setItem(key, serialized);
-  if (local.getItem(key) !== serialized) throw new Error("Không xác minh được bản cách ly.");
+  try {
+    local.setItem(key, serialized);
+    if (local.getItem(key) !== serialized) throw new Error("Không xác minh được bản cách ly.");
+  } catch (error) {
+    throw new Error("Không cách ly được dữ liệu gốc; từ chối phục hồi: " + storageErrorText(error));
+  }
   return copies;
 }
 

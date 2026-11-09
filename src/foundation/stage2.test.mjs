@@ -523,3 +523,38 @@ test("R2-F-03-e: no source bytes means no quarantine and no recovery overwrite",
     assert.equal(indexed.data.size, 0);
   });
 });
+
+test("R2-F-03-f: localStorage quota failure prevents recovery write and preserves broken IndexedDB", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const broken = "damaged-original";
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const originalSet = local.setItem;
+  local.setItem = (key, value) => {
+    if (key.startsWith(QUARANTINE_PREFIX)) throw new Error("QuotaExceededError");
+    return originalSet(key, value);
+  };
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await assert.rejects(() => recoverVerifiedBackup(backup), /Không cách ly được/u);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(indexed.calls.length, 0);
+    assert.equal(local.getItem(LEGACY_KEY), legacyEnvelope());
+  });
+});
+test("R2-F-03-g: failed IndexedDB recovery write retains quarantined original and locked session", async () => {
+  const backup = await useDesk.getState().exportDesk();
+  const broken = "damaged-original";
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    indexed.setFailWrites(true);
+    await assert.rejects(() => recoverVerifiedBackup(backup));
+    const key = [...local.map.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(key);
+    assert.equal(JSON.parse(local.getItem(key))[0].raw, broken);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(storageSnapshot().ready, false);
+  });
+});

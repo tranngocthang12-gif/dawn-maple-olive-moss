@@ -480,9 +480,9 @@ test("R2-F-03-b: quarantine keeps damaged source bytes and never overwrites acti
   const indexed = fakeIndexed({ [DESK_KEY]: broken });
   await withBrowser(local, indexed.api, async () => {
     const copies = await quarantineRawRecoveryCopies();
-    const key = [...local.map.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
+    const key = [...indexed.data.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
     assert.ok(key);
-    assert.deepEqual(JSON.parse(local.getItem(key)), copies);
+    assert.deepEqual(JSON.parse(indexed.data.get(key)), copies);
     assert.equal(indexed.data.get(DESK_KEY), broken);
     assert.equal(local.getItem(LEGACY_KEY), "legacy-raw");
     assert.equal(indexed.calls.length, 0);
@@ -497,9 +497,9 @@ test("R2-F-03-c: verified V2 backup recovers only after quarantining damaged act
   await withBrowser(local, indexed.api, async () => {
     await assert.rejects(() => durableStorage.getItem(DESK_KEY));
     await recoverVerifiedBackup(backup);
-    const key = [...local.map.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    const key = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
     assert.ok(key);
-    const copies = JSON.parse(local.getItem(key));
+    const copies = JSON.parse(indexed.data.get(key));
     assert.equal(copies[0].raw, broken);
     const saved = JSON.parse(indexed.data.get(DESK_KEY));
     assert.equal(saved.state.sha256, JSON.parse(backup).sha256);
@@ -544,9 +544,11 @@ test("R2-F-03-f: localStorage quota failure prevents recovery write and preserve
   const indexed = fakeIndexed({ [DESK_KEY]: broken });
   await withBrowser(local, indexed.api, async () => {
     await assert.rejects(() => durableStorage.getItem(DESK_KEY));
-    await assert.rejects(() => recoverVerifiedBackup(backup), /Không cách ly được/u);
-    assert.equal(indexed.data.get(DESK_KEY), broken);
-    assert.equal(indexed.calls.length, 0);
+    await recoverVerifiedBackup(backup);
+    const quarantineKey = [...indexed.data.keys()].find((k) => k.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantineKey);
+    assert.equal(JSON.parse(indexed.data.get(quarantineKey))[0].raw, broken);
+    assert.notEqual(indexed.data.get(DESK_KEY), broken);
     assert.equal(local.getItem(LEGACY_KEY), legacyEnvelope());
   });
 });
@@ -1038,5 +1040,28 @@ test("R2v2-R-04: failed IndexedDB read still exports exact legacy localStorage b
     await assert.rejects(() => quarantineRawRecoveryCopies(), /Không thể đọc dữ liệu thô IndexedDB/u);
     assert.equal(indexed.data.get(DESK_KEY), "unreadable-active");
     assert.equal(indexed.calls.length, 0);
+  });
+});
+
+test("R2v2-R-02: 3MB broken record quarantines in IndexedDB despite 1MB localStorage quota", async () => {
+  const broken = "corrupt:" + "x".repeat(3_000_000);
+  const backup = await useDesk.getState().exportDesk();
+  const local = fakeLocal({ [LEGACY_KEY]: legacyEnvelope() });
+  const set = local.setItem;
+  local.setItem = (key, value) => {
+    if (value.length > 1_000_000) throw new Error("QuotaExceededError");
+    return set(key, value);
+  };
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    await recoverVerifiedBackup(backup);
+    const quarantinedKey = [...indexed.data.keys()].find((key) => key.startsWith(QUARANTINE_PREFIX));
+    assert.ok(quarantinedKey);
+    const copies = JSON.parse(indexed.data.get(quarantinedKey));
+    assert.equal(copies[0].raw.length, broken.length);
+    assert.equal(copies[0].raw, broken);
+    assert.equal([...local.map.keys()].filter((key) => key.startsWith(QUARANTINE_PREFIX)).length, 0);
+    assert.equal(JSON.parse(indexed.data.get(DESK_KEY)).state.sha256, JSON.parse(backup).sha256);
   });
 });

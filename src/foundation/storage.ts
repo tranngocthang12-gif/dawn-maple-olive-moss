@@ -45,14 +45,29 @@ export async function quarantineRawRecoveryCopies(): Promise<RawRecoveryCopy[]> 
   if (!copies.some((copy) => copy.source === "indexeddb:" + DESK_KEY)) {
     throw new Error("Không đọc được bản IndexedDB gốc để cách ly; từ chối phục hồi.");
   }
-  const local = requireLocal();
   const key = QUARANTINE_PREFIX + new Date().toISOString() + "-" + Math.random().toString(36).slice(2);
   const serialized = JSON.stringify(copies);
+  // R-02: use IndexedDB for large damaged books, and verify the bytes before
+  // recovery can even consider replacing the active record. Keep all copies.
   try {
-    local.setItem(key, serialized);
-    if (local.getItem(key) !== serialized) throw new Error("Không xác minh được bản cách ly.");
-  } catch (error) {
-    throw new Error("Không cách ly được dữ liệu gốc; từ chối phục hồi: " + storageErrorText(error));
+    const db = await idbOpen();
+    try {
+      await idbWrite(db, key, serialized);
+      if (await idbRead(db, key) !== serialized) {
+        throw new Error("Không xác minh được bản cách ly IndexedDB.");
+      }
+      return copies;
+    } finally { db.close?.(); }
+  } catch (indexedError) {
+    // Only a failed IndexedDB quarantine permits a localStorage fallback.
+    try {
+      const local = requireLocal();
+      local.setItem(key, serialized);
+      if (local.getItem(key) !== serialized) throw new Error("Không xác minh được bản cách ly.");
+    } catch (localError) {
+      throw new Error("Không cách ly được dữ liệu gốc; từ chối phục hồi: IndexedDB: " +
+        storageErrorText(indexedError) + "; localStorage: " + storageErrorText(localError));
+    }
   }
   return copies;
 }

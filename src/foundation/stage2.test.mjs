@@ -390,3 +390,26 @@ test("j2) V2 rejects a file whose current outcome contradicts the latest outcome
   assert.match(rejected.reason, /decisions\[0\]\.outcomeLog/u);
   assert.equal(snapshot(), initial);
 });
+
+test("R2-F02-a: export in flight must never drop a decision added concurrently", async () => {
+  const exporting = useDesk.getState().exportDesk();
+  const result = useDesk.getState().addDecision({ security: "NEW", priceNote: "", action: "observe", thesisId: null,
+    expectedReturn: "", probabilityNote: "", risk: "", sizeNote: "", catalyst: "",
+    invalidation: "", alternativeView: "", override: false, overrideReason: "" });
+  assert.equal(result.ok, true);
+  await exporting;
+  assert.equal(useDesk.getState().decisions.filter((d) => d.security === "NEW").length, 1);
+});
+test("R2-F02-b: export in flight cannot truncate an appended outcomeLog", async () => {
+  const form = { security: "ABC", priceNote: "", action: "observe", thesisId: null, expectedReturn: "",
+    probabilityNote: "", risk: "", sizeNote: "", catalyst: "", invalidation: "", alternativeView: "",
+    override: false, overrideReason: "" };
+  assert.equal(useDesk.getState().addDecision(form).ok, true);
+  const id = useDesk.getState().decisions[0].id;
+  const exporting = useDesk.getState().exportDesk();
+  useDesk.getState().patchOutcome(id, {
+    outcome: "process-good-outcome-bad", postMortemClass: "bad-model", postMortemNote: "Outcome mới",
+  });
+  await exporting;
+  assert.equal(useDesk.getState().decisions.find((d) => d.id === id)?.outcomeLog.length, 2);
+});

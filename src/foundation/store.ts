@@ -639,12 +639,7 @@ export const useDesk = create<DeskState>()(
         const validated = migrateBook(payload);
         if (!validated.ok) throw new Error("Sổ không thể xuất: " + validated.field + " — " + validated.reason);
         const sha256 = await hashJson(validated.book);
-        // Keep the in-memory book synchronized with its persisted hash metadata.
-        commit(() => ({
-          decisions: hashed.decisions,
-          companySeals: hashed.companySeals,
-          tamperImportApprovals: hashed.tamperImportApprovals,
-        }));
+        // Export is a pure snapshot: never write old state back after awaits.
         return JSON.stringify({ ...validated.book, sha256 }, null, 2);
       },
       importDesk: async (raw, acceptTamper = false) => {

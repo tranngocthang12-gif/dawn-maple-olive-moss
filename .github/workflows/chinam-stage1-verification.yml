@@ -17,6 +17,13 @@ jobs:
           node-version: '22'
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Restore immutable historical fixtures for legacy tests (untracked)
+        run: |
+          git fetch --no-tags --depth=1 origin 3660d0c7f99d612c6e00f1d0c38e4817f5297139
+          git archive 3660d0c7f99d612c6e00f1d0c38e4817f5297139 .grok | tar -x
+          test -f .grok/skills/og/SKILL.md
+          test -f .grok/app-env.json
+          test -z "$(git ls-files .grok)"
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
@@ -29,6 +36,22 @@ jobs:
         env:
           VITE_GROK_EXTENSIONS: '0'
         run: PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite build
+      - name: Verify served production HTML excludes Grok extensions
+        env:
+          VITE_GROK_EXTENSIONS: '0'
+        run: |
+          PATH="./node_modules/.bin:$PATH" node scripts/with-app-env.mjs vite preview --host 127.0.0.1 --port 8081 > /tmp/chinam-preview.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8081/ -o /tmp/chinam-rendered.html; then break; fi
+            sleep 1
+          done
+          test -s /tmp/chinam-rendered.html || { cat /tmp/chinam-preview.log; exit 1; }
+          if grep -Fq 'grok.com/grok-app-builder/extensions.js' /tmp/chinam-rendered.html; then
+            echo "Rendered HTML still contains Grok extensions script"
+            exit 1
+          fi
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

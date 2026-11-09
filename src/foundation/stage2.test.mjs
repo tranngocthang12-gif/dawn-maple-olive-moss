@@ -9,7 +9,7 @@ import { emptyQuality, sealFromCompany } from "./logic.ts";
 import { bookSchema, migrateBook } from "./schema.ts";
 import { canonicalJson, sha256Hex, hashJson, sealHash, verifyJsonHash } from "./hash.ts";
 import { durableStorage, LEGACY_KEY, DESK_KEY, FALLBACK_KEY, resetStorageForTest,
-  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites } from "./storage.ts";
+  storageSnapshot, allowWritesAfterHydration, waitForDurableWrites, readRawRecoveryCopies, quarantineRawRecoveryCopies, QUARANTINE_PREFIX } from "./storage.ts";
 
 const baseline = () => ({
   theses: [], decisions: [], ledger: [], signoff: {}, activeThesisId: null,
@@ -447,4 +447,36 @@ test("R2-F-01-b: explicitly approved unverified legacy import leaves dated audit
   const entry = useDesk.getState().tamperImportApprovals.at(-1);
   assert.match(entry.note, /bản cũ chưa kiểm/u);
   assert.match(entry.at, /^\d{4}-\d{2}-\d{2}T/u);
+});
+
+test("R2-F-03-a: corrupted IndexedDB bytes remain unchanged and raw export preserves every character", async () => {
+  const broken = "{bad\\u0000raw";
+  const legacy = legacyEnvelope();
+  const local = fakeLocal({ [LEGACY_KEY]: legacy });
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    await assert.rejects(() => durableStorage.getItem(DESK_KEY));
+    assert.equal(storageSnapshot().ready, false);
+    const copies = await readRawRecoveryCopies();
+    assert.deepEqual(copies, [
+      { source: "indexeddb:" + DESK_KEY, raw: broken },
+      { source: "localStorage:" + LEGACY_KEY, raw: legacy },
+    ]);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(indexed.calls.length, 0);
+  });
+});
+test("R2-F-03-b: quarantine keeps damaged source bytes and never overwrites active book", async () => {
+  const broken = "corrupt-book-\\u0000";
+  const local = fakeLocal({ [LEGACY_KEY]: "legacy-raw" });
+  const indexed = fakeIndexed({ [DESK_KEY]: broken });
+  await withBrowser(local, indexed.api, async () => {
+    const copies = await quarantineRawRecoveryCopies();
+    const key = [...local.map.keys()].find((name) => name.startsWith(QUARANTINE_PREFIX));
+    assert.ok(key);
+    assert.deepEqual(JSON.parse(local.getItem(key)), copies);
+    assert.equal(indexed.data.get(DESK_KEY), broken);
+    assert.equal(local.getItem(LEGACY_KEY), "legacy-raw");
+    assert.equal(indexed.calls.length, 0);
+  });
 });

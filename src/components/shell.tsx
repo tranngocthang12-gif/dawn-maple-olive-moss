@@ -1,8 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useDesk } from "@/foundation/store";
-import { allowWritesAfterHydration, reportLoadFailure, storageSnapshot, watchStorage } from "@/foundation/storage";
+import { allowWritesAfterHydration, readRawRecoveryCopies, reportLoadFailure, storageSnapshot, watchStorage } from "@/foundation/storage";
 
 const nav = [
   { href: "/", label: "Bàn" },
@@ -34,6 +34,43 @@ async function hydrateBook(): Promise<void> {
   } catch (error) {
     reportLoadFailure(error);
   }
+}
+
+function RecoveryPanel({ error }: { error: string }) {
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const downloadRaw = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const copies = await readRawRecoveryCopies();
+      if (!copies.length) throw new Error("Không tìm thấy bản dữ liệu thô để tải.");
+      // Encode each raw string losslessly in JSON; never parse or normalize damaged payloads.
+      const blob = new Blob([JSON.stringify({ format: "chinam-raw-recovery-v1", copies })], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "chinam-du-lieu-tho-" + Date.now() + ".json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setMessage("Đã bắt đầu tải dữ liệu thô. Kiểm tra tệp trên máy trước khi phục hồi.");
+    } catch (cause) {
+      setMessage("Không thể tải dữ liệu thô: " + (cause instanceof Error ? cause.message : String(cause)));
+    } finally { setBusy(false); }
+  };
+  return (
+    <section role="alert" className="border border-red-700 p-5 text-red-700">
+      <p>Không mở được sổ: {error}. Không tạo sổ trống để thay dữ liệu thật.</p>
+      <button type="button" disabled={busy} onClick={() => { void downloadRaw(); }}
+        className="mt-4 border border-red-700 px-4 py-2 text-sm">
+        Tải dữ liệu thô đang lưu (IndexedDB và khóa cũ)
+      </button>
+      <p className="mt-3 text-sm">Chưa cho phép ghi phục hồi khi chưa xác minh cách ly dữ liệu lỗi. Giữ nguyên trang và tệp sao lưu.</p>
+      {message ? <p role="status" className="mt-3 text-sm">{message}</p> : null}
+    </section>
+  );
 }
 
 export function Shell({ children }: { children: ReactNode }) {
@@ -90,7 +127,7 @@ export function Shell({ children }: { children: ReactNode }) {
       ) : null}
       <main className="px-4 py-8 lg:px-8">
         {storage.loadError
-          ? <div role="alert" className="border border-red-700 p-5 text-red-700">Không mở được sổ: {storage.loadError}. Không tạo sổ trống để thay dữ liệu thật.</div>
+          ? <RecoveryPanel error={storage.loadError} />
           : !storeReady || !storage.ready
             ? <p role="status" className="py-12 text-center text-lg">Đang mở sổ…</p>
             : children}

@@ -23,3 +23,7 @@ jobs:
         run: npm run lint
       - name: Test
         run: npm test
+      - name: F-04 native Chromium two-tab IndexedDB CAS
+        env:
+          CHINAM_REAL_BROWSER_TEST: '1'
+        run: node --experimental-strip-types --test --test-name-pattern 'R2-F-04-m' src/foundation/stage2.test.mjs

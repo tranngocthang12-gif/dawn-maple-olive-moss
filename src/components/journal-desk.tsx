@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Note, Stamp, Field, areaClass, inputClass } from "@/components/ui";
-import { expectedReturn, processScore } from "@/foundation/logic";
+import { expectedReturn, processScore, thesisReadiness } from "@/foundation/logic";
 import { useDesk } from "@/foundation/store";
 import type { DecisionAction, PostMortemClass } from "@/foundation/types";
 
@@ -42,6 +42,11 @@ const empty = {
 export function JournalDesk() {
   const theses = useDesk((s) => s.theses);
   const decisions = useDesk((s) => s.decisions);
+  const mandate = useDesk((s) => s.mandate);
+  const world = useDesk((s) => s.world);
+  const baseRates = useDesk((s) => s.baseRates);
+  const companies = useDesk((s) => s.companies);
+  const ctx = { mandate, world, baseRates, companies, decisions };
   const addDecision = useDesk((s) => s.addDecision);
   const patchOutcome = useDesk((s) => s.patchOutcome);
   const amend = useDesk((s) => s.amend);
@@ -100,7 +105,10 @@ export function JournalDesk() {
               <option value="">Không gắn</option>
               {theses.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {(t.security || "Chưa đặt tên") + (t.status === "ready" ? " · sẵn sàng" : " · chưa sẵn sàng")}
+                  {(t.security || "Chưa đặt tên") + ({
+                    ready: " · sẵn sàng", "thin-ready": " · sẵn sàng mỏng", draft: " · nháp",
+                    invalidated: " · đã hủy",
+                  }[thesisReadiness(t, ctx)])}
                 </option>
               ))}
             </select>

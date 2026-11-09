@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorRaw,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadRaw,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -20,6 +20,12 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+// Cô lập test khỏi src/lib/og/site.json và public/og.jpg thật của app:
+// mặc định chạy trong một thư mục rỗng; test nào tự truyền cwd thì giữ nguyên.
+const EMPTY_CWD = mkdtempSync(join(tmpdir(), "og-empty-"));
+const injectGrokPwaHead = (html, ctx = {}) => injectGrokPwaHeadRaw(html, { cwd: EMPTY_CWD, ...ctx });
+const createHeadInjector = (ctx = {}) => createHeadInjectorRaw({ cwd: EMPTY_CWD, ...ctx });
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");

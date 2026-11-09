@@ -2,6 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Note, Stamp } from "@/components/ui";
 import { useDesk } from "@/foundation/store";
+import { thesisReadiness } from "@/foundation/logic";
 
 export const Route = createFileRoute("/")({
   head: () => ({ meta: [{ title: "CHỈNAM — Bàn vận hành" }] }),
@@ -17,7 +18,9 @@ function Desk() {
   const theses = useDesk((s) => s.theses);
   const ledger = useDesk((s) => s.ledger);
   const decisions = useDesk((s) => s.decisions);
-  const readyCount = theses.filter((t) => t.status === "ready").length;
+  const ctx = { mandate, world, baseRates, companies, decisions };
+  const readyCount = theses.filter((t) => thesisReadiness(t, ctx) === "ready").length;
+  const thinReadyCount = theses.filter((t) => thesisReadiness(t, ctx) === "thin-ready").length;
   const pending = decisions.filter((d) => !d.voided && d.outcome === "pending").length;
 
   return (
@@ -31,6 +34,7 @@ function Desk() {
         <Stamp tone={mandate.locked ? "solid" : "accent"}>{mandate.locked ? "Ủy thác đã khóa" : "Ủy thác chưa khóa"}</Stamp>
         <Stamp>Chưa hiệu chỉnh</Stamp>
         <Stamp>{readyCount} hồ sơ sẵn sàng</Stamp>
+        <Stamp tone="accent">{thinReadyCount} hồ sơ sẵn sàng mỏng</Stamp>
       </div>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -97,8 +101,8 @@ function Desk() {
           {theses.slice(0, 8).map((t) => (
             <li key={t.id} className="flex items-center justify-between gap-3 border border-line px-3 py-2 text-sm">
               <span>{t.security.trim() || "Chưa đặt tên"}</span>
-              <Stamp tone={t.status === "ready" ? "solid" : "muted"}>
-                {t.status === "ready" ? "Sẵn sàng" : t.status === "invalidated" ? "Đã hủy" : "Nháp"}
+              <Stamp tone={thesisReadiness(t, ctx) === "ready" ? "solid" : thesisReadiness(t, ctx) === "thin-ready" || thesisReadiness(t, ctx) === "invalidated" ? "accent" : "muted"}>
+                {thesisReadiness(t, ctx) === "ready" ? "Sẵn sàng" : thesisReadiness(t, ctx) === "thin-ready" ? "Sẵn sàng mỏng" : thesisReadiness(t, ctx) === "invalidated" ? "Đã hủy" : "Nháp"}
                 {t.ring === "inner" ? " · trong" : t.ring === "outer" ? " · ngoài" : ""}
               </Stamp>
             </li>

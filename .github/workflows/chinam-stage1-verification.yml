@@ -1,0 +1,29 @@
+name: CHINAM Foundation Stage 1 verification
+on:
+  push:
+    branches:
+      - chinam/stage1-gate-repair
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install declared dependencies without changing the repository lockfile
+        run: npm install --ignore-scripts --package-lock=false
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Test (run even if lint fails, to collect independent evidence)
+        if: always()
+        run: npm test
+      - name: Stage 1 independent lint (without unrelated baseline files)
+        if: always()
+        run: npx eslint src/foundation/logic.ts src/foundation/store.ts src/foundation/types.ts src/foundation/stage1.test.mjs src/components/thesis-desk.tsx src/components/journal-desk.tsx src/routes/index.tsx
+      - name: Stage 1 independent regression (even when legacy global tests fail)
+        if: always()
+        run: node --experimental-strip-types --test src/foundation/stage1.test.mjs

@@ -213,7 +213,7 @@ function BookCopy() {
         acceptTamper = true;
         result = await importDesk(raw, acceptLegacy, acceptTamper);
       }
-      setMsg(result.ok ? "Đã nhập sổ sau khi sao lưu. Giữ cả hai tệp." : result.reason);
+      setMsg(result.ok ? "Đã nhập và đã lưu" : result.reason);
     } catch (error) {
       setMsg("Không thể sao lưu/nhập sổ: " + (error instanceof Error ? error.message : String(error)));
     } finally {

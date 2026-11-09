@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { approvalFromMismatch, migrateBook } from "./schema.ts";
 import { ensureHashes, hashJson, countIntegrity } from "./hash.ts";
-import { durableStorage, storageSnapshot, reportLoadFailure, registerHashSink } from "./storage.ts";
+import { durableStorage, storageSnapshot, reportLoadFailure, registerHashSink, waitForDurableWrites } from "./storage.ts";
 import type {
   Amendment,
   BaseRate,
@@ -696,6 +696,15 @@ export const useDesk = create<DeskState>()(
               ...newlyApproved,
             ],
           }));
+          if (typeof window !== "undefined") {
+            // Zustand persist writes asynchronously. A successful in-memory
+            // set is NOT evidence that IndexedDB completed a durable commit.
+            await waitForDurableWrites();
+            const disk = storageSnapshot();
+            if (!disk.ready || disk.mode !== "indexeddb" || disk.readOnly || disk.conflict || disk.saveError) {
+              return { ok: false, reason: "Đã nhận file nhưng CHƯA LƯU ĐƯỢC — sổ đang ở bộ nhớ, hãy tải bản sao" };
+            }
+          }
           return { ok: true };
         } catch (error) {
           return { ok: false, reason: "Không thể nhập sổ: " + (error instanceof Error ? error.message : String(error)) };

@@ -1139,3 +1139,19 @@ test("R2v2-R-06: legacy backup with invalid nested hash requires two independent
   assert.ok(local.some((row) => row.note.includes("bản cũ chưa kiểm")));
   assert.ok(local.some((row) => row.note.includes("Vẫn nhập dù file đã bị sửa")));
 });
+
+test("stage2 followup L-01: importing a valid file must report failed durable IndexedDB write", async () => {
+  const indexed = fakeIndexed();
+  await withBrowser(fakeLocal(), indexed.api, async () => {
+    assert.equal(await durableStorage.getItem(DESK_KEY), null);
+    allowWritesAfterHydration();
+    const backup = await useDesk.getState().exportDesk();
+    indexed.setFailWrites(true);
+    const result = await useDesk.getState().importDesk(backup);
+    assert.equal(result.ok, false, "import must not acknowledge unsaved in-memory book");
+    assert.match(result.reason, /CHƯA LƯU ĐƯỢC/u);
+    await waitForDurableWrites();
+    assert.equal(storageSnapshot().saveError, true);
+    assert.equal(indexed.data.get(DESK_KEY), undefined);
+  });
+});

@@ -50,6 +50,32 @@ jobs:
             echo "Rendered HTML still contains Grok extensions script"
             exit 1
           fi
+      - name: Build kiểu Vercel từ mã nguồn (clean checkout)
+        env:
+          CI: '1'
+        run: |
+          CLEAN_DIR="$(mktemp -d)"
+          trap 'rm -rf "$CLEAN_DIR"' EXIT
+          git archive HEAD | tar -x -C "$CLEAN_DIR"
+          cd "$CLEAN_DIR"
+          test ! -e .vercel/output || { echo "FAIL: stale prebuilt output in clean archive"; exit 1; }
+          echo "CLEAN_VERCEL_BUILD: START"
+          echo '$ npm install --omit=dev --no-audit --no-fund'
+          npm install --omit=dev --no-audit --no-fund
+          echo '$ VITE_GROK_EXTENSIONS=0 npm run build'
+          VITE_GROK_EXTENSIONS=0 npm run build
+          test -d .vercel/output/static || { echo "FAIL: missing .vercel/output/static"; exit 1; }
+          if grep -R -F -q 'grok-app-builder/extensions.js' .vercel/output/static; then
+            echo "FAIL: legacy Grok extension remains in generated static output"
+            exit 1
+          fi
+          if ! grep -R -F -q 'chinam-foundation-v2' .vercel/output; then
+            echo "FAIL: generated Vercel output has no chinam-foundation-v2 marker"
+            exit 1
+          fi
+          echo "CLEAN_VERCEL_BUILD: PASS"
+          echo "GROK_EXTENSION_IN_STATIC: ABSENT"
+          echo "CHINAM_FOUNDATION_V2_IN_OUTPUT: PRESENT"
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

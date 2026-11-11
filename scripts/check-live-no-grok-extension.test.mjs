@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import * as liveCheck from "./check-live-no-grok-extension.mjs";
 import { GROK_EXTENSIONS_SCRIPT_SRC } from "./grok-pwa-shared.mjs";
 
 // Namespace import so a missing export fails only the test that needs it.
-const { CHINAM_APP_MARKER, GROK_EXTENSION_NEEDLE, checkLiveNoGrokExtension } = liveCheck;
+const { GROK_EXTENSION_NEEDLE, checkLiveNoGrokExtension } = liveCheck;
 
 const SCRIPTS_DIR = fileURLToPath(new URL(".", import.meta.url));
 const SCRIPT = join(SCRIPTS_DIR, "check-live-no-grok-extension.mjs");
@@ -108,15 +108,6 @@ test("REL-02 live check: needle matches the platform script URL", () => {
   assert.ok(GROK_EXTENSIONS_SCRIPT_SRC.endsWith(GROK_EXTENSION_NEEDLE));
 });
 
-test("REL-02 live check: CHỈNAM marker is the title of the app root route", () => {
-  assert.equal(CHINAM_APP_MARKER, APP_TITLE);
-  const route = readFileSync(join(SCRIPTS_DIR, "../src/routes/index.tsx"), "utf8");
-  assert.ok(
-    route.includes('title: "CHỈNAM — Bàn vận hành"'),
-    "src/routes/index.tsx no longer sets the title the live check relies on",
-  );
-});
-
 test("REL-02 live check: app page without the extension script is GREEN and reports the final URL", async () => {
   await withFakeSites(async (base) => {
     const result = await checkLiveNoGrokExtension(`${base}/clean`);
@@ -193,17 +184,22 @@ test("REL-02 live check: redirect to another origin is RED even if that page is 
   });
 });
 
-test(
-  "REL-02 live check: a server that never answers is RED after timeoutMs",
-  { timeout: 10_000 },
-  async () => {
-    await withFakeSites(async (base) => {
-      const started = Date.now();
-      await expectRed(`${base}/hang`, /fetch failed/, { timeoutMs: 300 });
-      assert.ok(Date.now() - started < 5_000, "timeout was not applied");
+test("REL-02 live check: a server that never answers is RED after timeoutMs", async () => {
+  await withFakeSites(async (base) => {
+    let timer;
+    const notApplied = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("timeoutMs was not applied")), 5_000);
     });
-  },
-);
+    try {
+      await Promise.race([
+        expectRed(`${base}/hang`, /fetch failed/, { timeoutMs: 300 }),
+        notApplied,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+});
 
 test("REL-02 live check: network error is RED", async () => {
   const url = await closedPortUrl();

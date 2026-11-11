@@ -1,53 +1,94 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import {
-  GROK_EXTENSION_NEEDLE,
-  checkLiveNoGrokExtension,
-} from "./check-live-no-grok-extension.mjs";
+import * as liveCheck from "./check-live-no-grok-extension.mjs";
 import { GROK_EXTENSIONS_SCRIPT_SRC } from "./grok-pwa-shared.mjs";
 
-const SCRIPT = fileURLToPath(new URL("./check-live-no-grok-extension.mjs", import.meta.url));
+// Namespace import so a missing export fails only the test that needs it.
+const { CHINAM_APP_MARKER, GROK_EXTENSION_NEEDLE, checkLiveNoGrokExtension } = liveCheck;
 
-const PAGES = {
-  "/with-script": [
-    200,
-    `<!doctype html><html><head><script src="${GROK_EXTENSIONS_SCRIPT_SRC}" defer></script></head><body>app</body></html>`,
-  ],
-  "/clean": [200, "<!doctype html><html><head></head><body>app</body></html>"],
-  "/server-error": [500, "<!doctype html><html><body>error</body></html>"],
-  "/not-found": [404, "<!doctype html><html><body>missing</body></html>"],
-};
+const SCRIPTS_DIR = fileURLToPath(new URL(".", import.meta.url));
+const SCRIPT = join(SCRIPTS_DIR, "check-live-no-grok-extension.mjs");
+const APP_TITLE = "<title>CHỈNAM — Bàn vận hành</title>";
+const appPage = (head = "") =>
+  `<!doctype html><html lang="vi"><head>${APP_TITLE}${head}</head><body>app</body></html>`;
+const HTML = { "content-type": "text/html; charset=utf-8" };
 
-async function withFakeSite(run) {
+function routes(otherBase) {
+  return {
+    "/clean": [200, HTML, appPage()],
+    "/with-script": [
+      200,
+      HTML,
+      appPage(`<script src="${GROK_EXTENSIONS_SCRIPT_SRC}" defer></script>`),
+    ],
+    "/server-error": [500, HTML, appPage()],
+    "/not-found": [404, HTML, appPage()],
+    "/json-200": [200, { "content-type": "application/json" }, '{"ok":true}'],
+    "/text-200": [200, { "content-type": "text/plain" }, appPage()],
+    "/no-content-type": [200, {}, appPage()],
+    "/empty-200": [200, HTML, ""],
+    "/no-content-204": [204, {}, ""],
+    "/html-not-the-app": [
+      200,
+      HTML,
+      "<!doctype html><html><head><title>Deployment placeholder</title></head><body>soon</body></html>",
+    ],
+    "/redirect-same-origin": [302, { location: "/clean" }, ""],
+    "/redirect-other-origin": [302, { location: `${otherBase}/clean` }, ""],
+  };
+}
+
+function listen(server) {
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+}
+
+async function closeServer(server) {
+  server.closeAllConnections?.();
+  await new Promise((resolve) => server.close(resolve));
+}
+
+async function withFakeSites(run) {
+  // Second site on a different origin ("localhost" vs "127.0.0.1") serving the real app page.
+  const other = createServer((_req, res) => {
+    res.writeHead(200, HTML);
+    res.end(appPage());
+  });
+  await listen(other);
+  const otherBase = `http://localhost:${other.address().port}`;
+  const table = routes(otherBase);
   const server = createServer((req, res) => {
-    const [status, body] = PAGES[req.url] ?? [404, "missing"];
-    res.writeHead(status, { "content-type": "text/html; charset=utf-8" });
+    if (req.url === "/hang") return; // never answers
+    const [status, headers, body] = table[req.url] ?? [404, HTML, "missing"];
+    res.writeHead(status, headers);
     res.end(body);
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listen(server);
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     return await run(base);
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await closeServer(server);
+    await closeServer(other);
   }
 }
 
 async function closedPortUrl() {
   const server = createServer();
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await listen(server);
   const { port } = server.address();
-  await new Promise((resolve) => server.close(resolve));
+  await closeServer(server);
   return `http://127.0.0.1:${port}/`;
 }
 
-function runCli(url) {
+function runCli(args, script = SCRIPT) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, url], { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [script, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
     child.stderr.on("data", (chunk) => (output += chunk));
@@ -55,61 +96,125 @@ function runCli(url) {
   });
 }
 
+async function expectRed(url, pattern, options) {
+  const result = await checkLiveNoGrokExtension(url, options);
+  assert.equal(result.ok, false, `${url}: ${result.reason}`);
+  assert.match(result.reason, pattern);
+  return result;
+}
+
 test("REL-02 live check: needle matches the platform script URL", () => {
   assert.ok(GROK_EXTENSIONS_SCRIPT_SRC.endsWith(GROK_EXTENSION_NEEDLE));
 });
 
-test("REL-02 live check: page with the extension script is RED", async () => {
-  await withFakeSite(async (base) => {
-    const result = await checkLiveNoGrokExtension(`${base}/with-script`);
-    assert.equal(result.ok, false);
-    assert.equal(result.status, 200);
-    assert.match(result.reason, /contains/);
-
-    const cli = await runCli(`${base}/with-script`);
-    assert.equal(cli.code, 1, cli.output);
-    assert.match(cli.output, /^FAIL:/);
-  });
+test("REL-02 live check: CHỈNAM marker is the title of the app root route", () => {
+  assert.equal(CHINAM_APP_MARKER, APP_TITLE);
+  const route = readFileSync(join(SCRIPTS_DIR, "../src/routes/index.tsx"), "utf8");
+  assert.ok(
+    route.includes('title: "CHỈNAM — Bàn vận hành"'),
+    "src/routes/index.tsx no longer sets the title the live check relies on",
+  );
 });
 
-test("REL-02 live check: page without the extension script is GREEN", async () => {
-  await withFakeSite(async (base) => {
+test("REL-02 live check: app page without the extension script is GREEN and reports the final URL", async () => {
+  await withFakeSites(async (base) => {
     const result = await checkLiveNoGrokExtension(`${base}/clean`);
     assert.equal(result.ok, true, result.reason);
     assert.equal(result.status, 200);
+    assert.equal(result.finalUrl, `${base}/clean`);
 
-    const cli = await runCli(`${base}/clean`);
+    const cli = await runCli([`${base}/clean`]);
     assert.equal(cli.code, 0, cli.output);
-    assert.match(cli.output, /^PASS:/);
+    assert.match(cli.output, /^PASS: /);
+    assert.ok(cli.output.includes(`final ${base}/clean`), cli.output);
   });
 });
 
-test("REL-02 live check: non-2xx status is RED even without the script", async () => {
-  await withFakeSite(async (base) => {
-    for (const path of ["/server-error", "/not-found"]) {
-      const result = await checkLiveNoGrokExtension(`${base}${path}`);
-      assert.equal(result.ok, false, path);
-      assert.match(result.reason, /non-2xx/);
-    }
-    const cli = await runCli(`${base}/server-error`);
+test("REL-02 live check: app page with the extension script is RED", async () => {
+  await withFakeSites(async (base) => {
+    await expectRed(`${base}/with-script`, /contains/);
+    const cli = await runCli([`${base}/with-script`]);
+    assert.equal(cli.code, 1, cli.output);
+    assert.match(cli.output, /^FAIL: /);
+  });
+});
+
+test("REL-02 live check: non-2xx status is RED even on the app page", async () => {
+  await withFakeSites(async (base) => {
+    await expectRed(`${base}/server-error`, /non-2xx/);
+    await expectRed(`${base}/not-found`, /non-2xx/);
+    const cli = await runCli([`${base}/server-error`]);
     assert.equal(cli.code, 1, cli.output);
   });
 });
 
+test("REL-02 live check: content-type other than text/html is RED", async () => {
+  await withFakeSites(async (base) => {
+    await expectRed(`${base}/json-200`, /content-type/);
+    await expectRed(`${base}/text-200`, /content-type/);
+    await expectRed(`${base}/no-content-type`, /content-type/);
+    const cli = await runCli([`${base}/json-200`]);
+    assert.equal(cli.code, 1, cli.output);
+  });
+});
+
+test("REL-02 live check: empty body (200 and 204) is RED", async () => {
+  await withFakeSites(async (base) => {
+    await expectRed(`${base}/empty-200`, /empty/);
+    await expectRed(`${base}/no-content-204`, /empty|content-type/);
+    const cli = await runCli([`${base}/empty-200`]);
+    assert.equal(cli.code, 1, cli.output);
+  });
+});
+
+test("REL-02 live check: HTML page that is not CHỈNAM is RED", async () => {
+  await withFakeSites(async (base) => {
+    await expectRed(`${base}/html-not-the-app`, /marker/);
+    const cli = await runCli([`${base}/html-not-the-app`]);
+    assert.equal(cli.code, 1, cli.output);
+  });
+});
+
+test("REL-02 live check: same-origin redirect is followed and GREEN on the app page", async () => {
+  await withFakeSites(async (base) => {
+    const result = await checkLiveNoGrokExtension(`${base}/redirect-same-origin`);
+    assert.equal(result.ok, true, result.reason);
+    assert.equal(result.finalUrl, `${base}/clean`);
+  });
+});
+
+test("REL-02 live check: redirect to another origin is RED even if that page is clean", async () => {
+  await withFakeSites(async (base) => {
+    const result = await expectRed(`${base}/redirect-other-origin`, /origin/);
+    assert.match(result.finalUrl, /^http:\/\/localhost:\d+\/clean$/);
+    const cli = await runCli([`${base}/redirect-other-origin`]);
+    assert.equal(cli.code, 1, cli.output);
+  });
+});
+
+test(
+  "REL-02 live check: a server that never answers is RED after timeoutMs",
+  { timeout: 10_000 },
+  async () => {
+    await withFakeSites(async (base) => {
+      const started = Date.now();
+      await expectRed(`${base}/hang`, /fetch failed/, { timeoutMs: 300 });
+      assert.ok(Date.now() - started < 5_000, "timeout was not applied");
+    });
+  },
+);
+
 test("REL-02 live check: network error is RED", async () => {
   const url = await closedPortUrl();
-  const result = await checkLiveNoGrokExtension(url, { timeoutMs: 5_000 });
-  assert.equal(result.ok, false);
-  assert.match(result.reason, /fetch failed/);
-
-  const cli = await runCli(url);
+  await expectRed(url, /fetch failed/, { timeoutMs: 5_000 });
+  const cli = await runCli([url]);
   assert.equal(cli.code, 1, cli.output);
-  assert.match(cli.output, /^FAIL:/);
+  assert.match(cli.output, /^FAIL: /);
 });
 
 test("REL-02 live check: invalid URL or missing argument is RED", async () => {
   assert.equal((await checkLiveNoGrokExtension("not a url")).ok, false);
   assert.equal((await checkLiveNoGrokExtension("ftp://example.invalid/")).ok, false);
-  const cli = await runCli("");
+  const cli = await runCli([""]);
   assert.notEqual(cli.code, 0, cli.output);
 });

@@ -18,6 +18,8 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { isMainModule } from "./is-main-module.mjs";
+
 export const GROK_EXTENSION_NEEDLE = "grok-app-builder/extensions.js";
 
 const CHILD_SOURCE = `
@@ -81,4 +83,4 @@ function main() {
   console.log("BUILT_SERVER_GROK_EXTENSION_CHECK: PASS");
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();
+if (isMainModule(import.meta.url)) main();

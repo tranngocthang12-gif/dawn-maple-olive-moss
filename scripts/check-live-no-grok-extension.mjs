@@ -15,7 +15,7 @@
 //
 // Run after every deployment. Not run against a real address in CI.
 
-import { pathToFileURL } from "node:url";
+import { isMainModule } from "./is-main-module.mjs";
 
 export const GROK_EXTENSION_NEEDLE = "grok-app-builder/extensions.js";
 export const CHINAM_APP_MARKER = "<title>CHỈNAM — Bàn vận hành</title>";
@@ -96,4 +96,4 @@ async function main() {
   process.exit(result.ok ? 0 : 1);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();
+if (isMainModule(import.meta.url)) await main();

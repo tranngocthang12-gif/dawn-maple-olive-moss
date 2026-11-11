@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -217,4 +218,26 @@ test("REL-02 live check: invalid URL or missing argument is RED", async () => {
   assert.equal((await checkLiveNoGrokExtension("ftp://example.invalid/")).ok, false);
   const cli = await runCli([""]);
   assert.notEqual(cli.code, 0, cli.output);
+});
+
+test("REL-02 live check: CLI still runs the check when invoked through a file or directory symlink", async () => {
+  const work = mkdtempSync(join(tmpdir(), "chinam-live-symlink-"));
+  try {
+    const fileLink = join(work, "check-live-link.mjs");
+    symlinkSync(SCRIPT, fileLink);
+    const dirLink = join(work, "scripts-link");
+    symlinkSync(SCRIPTS_DIR, dirLink, "dir");
+    await withFakeSites(async (base) => {
+      for (const script of [fileLink, join(dirLink, "check-live-no-grok-extension.mjs")]) {
+        const red = await runCli([`${base}/with-script`], script);
+        assert.equal(red.code, 1, `${script}: ${red.output}`);
+        assert.match(red.output, /^FAIL: /, script);
+        const green = await runCli([`${base}/clean`], script);
+        assert.equal(green.code, 0, `${script}: ${green.output}`);
+        assert.match(green.output, /^PASS: /, script);
+      }
+    });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 });

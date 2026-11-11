@@ -54,8 +54,9 @@ jobs:
         env:
           CI: '1'
         run: |
-          CLEAN_DIR="$(mktemp -d)"
-          trap 'rm -rf "$CLEAN_DIR"' EXIT
+          # Kept for the next step (built server function check); the runner is discarded after the job.
+          CLEAN_DIR="$RUNNER_TEMP/chinam-clean-vercel"
+          rm -rf "$CLEAN_DIR" && mkdir -p "$CLEAN_DIR"
           git archive HEAD | tar -x -C "$CLEAN_DIR"
           cd "$CLEAN_DIR"
           test ! -e .vercel/output || { echo "FAIL: stale prebuilt output in clean archive"; exit 1; }
@@ -76,6 +77,8 @@ jobs:
           echo "CLEAN_VERCEL_BUILD: PASS"
           echo "GROK_EXTENSION_IN_STATIC: ABSENT"
           echo "CHINAM_FOUNDATION_V2_IN_OUTPUT: PRESENT"
+      - name: REL-02 — built server function HTML has no Grok extensions script with VITE_GROK_EXTENSIONS=0
+        run: node scripts/check-built-server-grok-extension.mjs "$RUNNER_TEMP/chinam-clean-vercel/.vercel/output"
       - name: F-04 native Chromium two-tab IndexedDB CAS
         env:
           CHINAM_REAL_BROWSER_TEST: '1'

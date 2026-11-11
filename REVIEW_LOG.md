@@ -1,6 +1,6 @@
 # REVIEW_LOG.md — CHỈNAM R2 decision index
 
-This is an evidence index of **Owner-transmitted independent Claude R2** conclusions. Links lead to the actual GitHub PR comments, not architect self-assessments. Snapshot: 2026-11-09.
+This is an evidence index of **Owner-transmitted independent Claude R2** conclusions. Links lead to the actual GitHub PR comments, not architect self-assessments. Snapshot: 2026-11-11.
 
 | PR / scope | Exact reviewed SHA | R2 conclusion | Source comment |
 | --- | --- | --- | --- |
@@ -10,7 +10,9 @@ This is an evidence index of **Owner-transmitted independent Claude R2** conclus
 | [#4 Stage 2 follow-ups](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/4) | `ffa64354ae2274b0a026b533359a38f47e250713` | **MERGEABLE** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/4#issuecomment-6738116210) |
 | [#5 Stage 3 initial](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5) | `70c9fcd531f915806a76d747f6a09c7d331061eb` | **CHANGES REQUIRED** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5#issuecomment-6738649333) |
 | [#5 Stage 3 corrected](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5) | `b0ef6e8b76e45cd08fc01d027f9ab054a4d44b97` | **MERGEABLE** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5#issuecomment-6739242528) |
+| [#6 Ops #4.0](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/6) | `16303010d1103ddfe9323ef39e028f4f5d1507bf` | **MERGEABLE**; gộp bởi Owner, merge commit `609ed1bd7cdbea76842745985e34c13e91e050c4`; accepted under one-time waiver W-02 (reviewer: Chief Engineer). Raised REL-02 (MEDIUM, pre-existing, not blocking) | [Owner-forwarded R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/6#issuecomment-6759515840) |
+| [#7 Order #4.1, REL-02](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/7) | `a1aa7005d27dc617566f8e94eaf13b9c227bba7b` | **PR #7 — R2 vòng 1: CHANGES REQUIRED** (waiver W-01). R2C7-01 MEDIUM blocking (live check passed on non-app responses); R2C7-02 LOW (main-module guard under symlinks); R2C7-03 LOW (session links in commit messages, Owner accepted as is). Report SHA-256 `060a84dd4bf71e9734bc12b065b64a18915ef35fe7d6e164c0b2576d0138e32e` | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/7#issuecomment-6788374508) |
 
 **Lost record:** The **original** PR #2 R2 findings `F-01…F-13` were reported lost and **superseded by Owner authorization of R2 version 2** ([PR #2 replacement finding list](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/2#issuecomment-6734383617)). Never reconstruct or attribute the missing original findings to a reviewer.
 
-No R2 conclusion is claimed for #4.0 until an independent reviewer actually assesses its pinned PR SHA. No automated promotion from green CI to a reviewer verdict.
+No R2 conclusion is claimed for the corrected PR #7 head until an independent reviewer (waiver W-01) re-assesses that pinned SHA. No automated promotion from green CI to a reviewer verdict.

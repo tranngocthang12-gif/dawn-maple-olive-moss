@@ -1,6 +1,6 @@
 # REVIEW_LOG.md — CHỈNAM R2 decision index
 
-This is an evidence index of **Owner-transmitted independent Claude R2** conclusions. Links lead to the actual GitHub PR comments, not architect self-assessments. Snapshot: 2026-11-09.
+This is an evidence index of **Owner-transmitted independent Claude R2** conclusions. Links lead to the actual GitHub PR comments, not architect self-assessments. Snapshot: 2026-11-11.
 
 | PR / scope | Exact reviewed SHA | R2 conclusion | Source comment |
 | --- | --- | --- | --- |
@@ -10,7 +10,8 @@ This is an evidence index of **Owner-transmitted independent Claude R2** conclus
 | [#4 Stage 2 follow-ups](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/4) | `ffa64354ae2274b0a026b533359a38f47e250713` | **MERGEABLE** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/4#issuecomment-6738116210) |
 | [#5 Stage 3 initial](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5) | `70c9fcd531f915806a76d747f6a09c7d331061eb` | **CHANGES REQUIRED** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5#issuecomment-6738649333) |
 | [#5 Stage 3 corrected](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5) | `b0ef6e8b76e45cd08fc01d027f9ab054a4d44b97` | **MERGEABLE** | [Owner-forwarded independent R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/5#issuecomment-6739242528) |
+| [#6 Ops #4.0](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/6) | `16303010d1103ddfe9323ef39e028f4f5d1507bf` | **MERGEABLE**; gộp bởi Owner, merge commit `609ed1bd7cdbea76842745985e34c13e91e050c4`; accepted under one-time waiver W-02 (reviewer: Chief Engineer). Raised REL-02 (MEDIUM, pre-existing, not blocking) | [Owner-forwarded R2](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/6#issuecomment-6759515840) |
 
 **Lost record:** The **original** PR #2 R2 findings `F-01…F-13` were reported lost and **superseded by Owner authorization of R2 version 2** ([PR #2 replacement finding list](https://github.com/tranngocthang12-gif/dawn-maple-olive-moss/pull/2#issuecomment-6734383617)). Never reconstruct or attribute the missing original findings to a reviewer.
 
-No R2 conclusion is claimed for #4.0 until an independent reviewer actually assesses its pinned PR SHA. No automated promotion from green CI to a reviewer verdict.
+No R2 conclusion is claimed for the order #4.1 PR until an independent reviewer (waiver W-01) actually assesses its pinned PR SHA. No automated promotion from green CI to a reviewer verdict.
